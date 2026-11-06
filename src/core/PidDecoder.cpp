@@ -76,8 +76,17 @@ QByteArray PidDecoder::extractDataBytes(const QString& rawResponse, const QStrin
                 }
 
                 if (pidMatch) {
+                    int endK = tokens.size();
+                    // Si la línea tiene formato de trama ISO 9141-2 / KWP2000 con 3 bytes de cabecera al inicio
+                    if (i == 3 && tokens.size() >= 5) {
+                        QString t0 = tokens.at(0).toUpper();
+                        if (t0 == QStringLiteral("48") || t0 == QStringLiteral("68") ||
+                            (t0.length() == 2 && (t0.startsWith(QLatin1Char('8')) || t0.startsWith(QLatin1Char('C'))))) {
+                            endK = tokens.size() - 1; // Omitir el checksum final
+                        }
+                    }
                     QByteArray bytes;
-                    for (int k = currentIdx; k < tokens.size(); ++k) {
+                    for (int k = currentIdx; k < endK; ++k) {
                         bool ok = false;
                         uint byteVal = tokens.at(k).toUInt(&ok, 16);
                         if (ok) {

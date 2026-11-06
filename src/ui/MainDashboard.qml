@@ -89,12 +89,62 @@ ApplicationWindow {
                 Layout.preferredWidth: 220
             }
 
+            ComboBox {
+                id: serialPortSelector
+                visible: adapterSelector.currentIndex === 1
+                Layout.preferredWidth: 240
+                model: diagnosticController.availableSerialPorts
+                displayText: {
+                    if (count === 0) return "Sin puertos USB detectados";
+                    if (currentIndex >= 0 && currentIndex < count) {
+                        var item = model[currentIndex];
+                        if (item) {
+                            var name = item.portName || "";
+                            var desc = item.description || "";
+                            var rec = item.isRecommended ? " ★" : "";
+                            return name + (desc ? (" - " + desc) : "") + rec;
+                        }
+                    }
+                    return diagnosticController.selectedSerialPort || "Seleccionar puerto USB";
+                }
+                delegate: ItemDelegate {
+                    width: serialPortSelector.width
+                    contentItem: Text {
+                        text: {
+                            var name = modelData.portName || "";
+                            var desc = modelData.description || "";
+                            var rec = modelData.isRecommended ? " ★ [Recomendado]" : "";
+                            return name + (desc ? (" - " + desc) : "") + rec;
+                        }
+                        color: modelData.isRecommended ? "#38bdf8" : "#f8fafc"
+                        font.bold: modelData.isRecommended
+                        elide: Text.ElideRight
+                    }
+                    background: Rectangle {
+                        color: highlighted ? "#1e293b" : "#0f172a"
+                    }
+                }
+                onActivated: function(index) {
+                    if (index >= 0 && index < model.length) {
+                        var item = model[index];
+                        diagnosticController.selectedSerialPort = item.systemLocation || item.portName;
+                    }
+                }
+            }
+
+            Button {
+                id: refreshPortsBtn
+                text: "Refrescar Puertos"
+                visible: adapterSelector.currentIndex === 1
+                onClicked: diagnosticController.refreshSerialPorts()
+            }
+
             TextField {
-                id: portField
-                placeholderText: "/dev/ttyUSB0 o can0"
-                text: "/dev/ttyUSB0"
-                visible: adapterSelector.currentIndex >= 1
-                Layout.preferredWidth: 130
+                id: canPortField
+                placeholderText: "can0"
+                text: "can0"
+                visible: adapterSelector.currentIndex === 2
+                Layout.preferredWidth: 100
             }
 
             Button {
@@ -105,7 +155,13 @@ ApplicationWindow {
                     if (diagnosticController.connected) {
                         diagnosticController.disconnectAdapter();
                     } else {
-                        diagnosticController.connectAdapter(portField.text);
+                        if (adapterSelector.currentIndex === 1) {
+                            diagnosticController.connectAdapter(diagnosticController.selectedSerialPort);
+                        } else if (adapterSelector.currentIndex === 2) {
+                            diagnosticController.connectAdapter(canPortField.text);
+                        } else {
+                            diagnosticController.connectAdapter();
+                        }
                     }
                 }
             }
@@ -192,6 +248,7 @@ ApplicationWindow {
             TabButton { text: "Medidores en Vivo"; width: implicitWidth + 24 }
             TabButton { text: "Osciloscopio / Gráficas"; width: implicitWidth + 24 }
             TabButton { text: "Códigos de Falla (DTC)"; width: implicitWidth + 24 }
+            TabButton { text: "Consola / Log Crudo"; width: implicitWidth + 24 }
         }
 
         StackLayout {
@@ -657,16 +714,160 @@ ApplicationWindow {
                     }
                 }
             }
+
+            // =================================================================
+            // VISTA 4: CONSOLA / LOG DE TRAMAS CRUDAS (RAW TERMINAL LOG)
+            // =================================================================
+            Item {
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 12
+
+                    // Encabezado con título y botones de acción del log
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        Text {
+                            text: "Monitor de Comunicación Cruda (Terminal OBD2 / UDS / ELM327)"
+                            color: "#f8fafc"
+                            font.bold: true
+                            font.pixelSize: 14
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Button {
+                            text: "Limpiar Log"
+                            onClicked: diagnosticController.clearCommunicationLog()
+                        }
+
+                        Button {
+                            text: "Exportar Log a TXT"
+                            highlighted: true
+                            onClicked: diagnosticController.exportCommunicationLog()
+                        }
+                    }
+
+                    // Visor de Log estilo consola
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        color: "#090d16"
+                        radius: 8
+                        border.color: "#1e293b"
+                        border.width: 1
+                        clip: true
+
+                        ListView {
+                            id: logListView
+                            anchors.fill: parent
+                            anchors.margins: 10
+                            model: diagnosticController.communicationLog
+                            spacing: 4
+
+                            onCountChanged: {
+                                Qt.callLater(function() {
+                                    logListView.positionViewAtEnd();
+                                });
+                            }
+
+                            delegate: Text {
+                                width: logListView.width - 20
+                                wrapMode: Text.WrapAnywhere
+                                text: modelData
+                                font.family: "monospace"
+                                font.pixelSize: 12
+                                color: {
+                                    if (modelData.indexOf("TX ->") !== -1) return "#38bdf8";      // Cyan
+                                    if (modelData.indexOf("RX <-") !== -1) return "#4ade80";      // Verde
+                                    if (modelData.indexOf("[BLOQUEADO]") !== -1) return "#ef4444"; // Rojo
+                                    if (modelData.indexOf("ERROR") !== -1) return "#f87171";      // Rojo suave
+                                    if (modelData.indexOf("INFO") !== -1) return "#94a3b8";       // Gris
+                                    return "#e2e8f0";
+                                }
+                            }
+
+                            Text {
+                                anchors.centerIn: parent
+                                visible: logListView.count === 0
+                                text: "Consola de comunicación vacía. Envíe comandos o inicie la conexión."
+                                color: "#475569"
+                                font.family: "monospace"
+                                font.pixelSize: 13
+                            }
+                        }
+                    }
+
+                    // Barra de Envío Manual de Comandos
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        TextField {
+                            id: rawCmdField
+                            Layout.fillWidth: true
+                            placeholderText: "Enviar comando AT / OBD2 / UDS (ej. AT DP, AT RV, 01 00, 21 01)..."
+                            color: "#f8fafc"
+                            font.family: "monospace"
+                            onAccepted: {
+                                if (rawCmdField.text.trim().length > 0) {
+                                    diagnosticController.sendDiagnosticCommand(rawCmdField.text.trim());
+                                    rawCmdField.clear();
+                                }
+                            }
+                        }
+
+                        Button {
+                            text: "Enviar"
+                            highlighted: true
+                            enabled: diagnosticController.connected && rawCmdField.text.trim().length > 0
+                            onClicked: {
+                                diagnosticController.sendDiagnosticCommand(rawCmdField.text.trim());
+                                rawCmdField.clear();
+                            }
+                        }
+                    }
+
+                    // Botones de Acceso Rápido (Pills de comandos seguros)
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Text {
+                            text: "Comandos Rápidos:"
+                            color: "#64748b"
+                            font.pixelSize: 12
+                            font.bold: true
+                        }
+
+                        Repeater {
+                            model: ["AT DP", "AT RV", "01 00", "01 0C", "09 02"]
+                            delegate: Button {
+                                text: modelData
+                                Layout.preferredHeight: 28
+                                font.family: "monospace"
+                                font.pixelSize: 11
+                                enabled: diagnosticController.connected
+                                onClicked: diagnosticController.sendDiagnosticCommand(modelData)
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+                    }
+                }
+            }
         }
     }
 
-    // Cuadro de Diálogo de Confirmación Segura de Borrado (SafetyGuard)
+    // Cuadro de Diálogo de Confirmación Segura de Borrado (SafetyGuard & Triple Candado KOEO)
     Dialog {
         id: confirmClearDialog
         title: "Confirmar Borrado de Códigos de Falla (DTC)"
         modal: true
         anchors.centerIn: parent
-        width: 460
+        width: 480
         standardButtons: Dialog.Yes | Dialog.No
 
         ColumnLayout {
@@ -674,17 +875,19 @@ ApplicationWindow {
             width: parent.width
 
             Text {
-                text: "ADVERTENCIA DE SEGURIDAD ECU"
+                text: "TRIPLE CANDADO DE SEGURIDAD KOEO (Modo 04 / UDS 0x14)"
                 color: "#ef4444"
                 font.bold: true
                 font.pixelSize: 14
             }
 
             Text {
-                text: "El comando de borrado (Modo 04 / UDS 0x14) restablecerá los monitores de emisiones (Readiness Monitors) y congelados de pantalla (Freeze Frame).\n\n" +
-                      "Requisito estricto de SafetyGuard:\n" +
-                      "• El motor debe estar detenido con el contacto encendido (RPM = 0).\n" +
-                      "¿Desea enviar la instrucción de borrado a la ECU?"
+                text: "El borrado de DTCs restablecerá monitores de emisiones (Readiness Monitors) y congelados de pantalla (Freeze Frame).\n\n" +
+                      "Candados de Hardware obligatorios antes de enviar 04:\n" +
+                      "• 1. Motor apagado (RPM ≤ 50)\n" +
+                      "• 2. Vehículo detenido (0 km/h)\n" +
+                      "• 3. Batería estable (≥ 11.5 V)\n\n" +
+                      "¿Desea proceder con el borrado en la ECU?"
                 color: "#e2e8f0"
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
@@ -694,6 +897,53 @@ ApplicationWindow {
 
         onAccepted: {
             diagnosticController.clearDtcs(true);
+        }
+        onRejected: {
+            diagnosticController.clearDtcs(false);
+        }
+    }
+
+    // Diálogo de Alerta de Estado del Sistema (Resultados de Modo 04 / Errores)
+    Dialog {
+        id: statusAlertDialog
+        title: "Aviso del Sistema"
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        standardButtons: Dialog.Ok
+
+        property alias alertTitle: statusAlertDialog.title
+        property string alertMessage: ""
+        property bool isError: false
+
+        ColumnLayout {
+            spacing: 12
+            width: parent.width
+
+            Text {
+                text: statusAlertDialog.isError ? "ATENCIÓN / RESTRICCIÓN DE SEGURIDAD" : "OPERACIÓN COMPLETADA"
+                color: statusAlertDialog.isError ? "#ef4444" : "#10b981"
+                font.bold: true
+                font.pixelSize: 13
+            }
+
+            Text {
+                text: statusAlertDialog.alertMessage
+                color: "#f8fafc"
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+                font.pixelSize: 13
+            }
+        }
+    }
+
+    Connections {
+        target: diagnosticController
+        function onStatusAlert(title, message, isError) {
+            statusAlertDialog.alertTitle = title;
+            statusAlertDialog.alertMessage = message;
+            statusAlertDialog.isError = isError;
+            statusAlertDialog.open();
         }
     }
 }

@@ -22,6 +22,7 @@ private slots:
     void testDbcParser();
     void testToyotaCamry2006DynamicSimulation();
     void testChevroletBeat2018DynamicSimulation();
+    void testTripleLockClearDtcs();
 };
 
 void TestObdSimulator::initTestCase()
@@ -304,6 +305,65 @@ void TestObdSimulator::testChevroletBeat2018DynamicSimulation()
                                      obdbLoader.authorizedCraFilters());
     QString unkResp = mockDriver.sendRawCommand(QStringLiteral("22 FF FF"));
     QCOMPARE(unkResp, QStringLiteral("NO DATA\r\r>"));
+}
+
+void TestObdSimulator::testTripleLockClearDtcs()
+{
+    MockElmDriver mockDriver;
+    QVERIFY(mockDriver.loadScenario(QStringLiteral("toyota_camry_2006_test.json")));
+    QVERIFY(mockDriver.openConnection());
+
+    DtcManager dtcMgr;
+    QVERIFY(dtcMgr.initializeDatabase());
+
+    ObdbJsonLoader obdbLoader;
+    QVERIFY(obdbLoader.loadFile(QStringLiteral("opendbc/SAE-J1979/signalsets/v3/default.json")));
+    QVERIFY(obdbLoader.appendFile(QStringLiteral("opendbc/Toyota-Camry/signalsets/v3/default.json"), 2006));
+
+    DbcParser dbcParser;
+
+    SafetyGuard::setAuthorizedContext(obdbLoader.authorizedCommands(),
+                                     obdbLoader.authorizedHeaders(),
+                                     obdbLoader.authorizedCraFilters());
+
+    ObdProtocol obd(&mockDriver, &dtcMgr, &obdbLoader, &dbcParser);
+
+    QString statusMsg;
+
+    // Caso 0: Sin confirmación del usuario -> debe abortar inmediatamente
+    bool okNoConfirm = obd.clearDtcs(false, &statusMsg);
+    QVERIFY(!okNoConfirm);
+    QVERIFY(statusMsg.contains(QStringLiteral("confirmación"), Qt::CaseInsensitive));
+
+    // Caso 1: Motor encendido (en escenario original 01 0C = 750 RPM) -> Candado 1 debe bloquear
+    bool okEngineRunning = obd.clearDtcs(true, &statusMsg);
+    QVERIFY2(!okEngineRunning, "clearDtcs no debe permitir borrado con motor encendido");
+    QVERIFY(statusMsg.contains(QStringLiteral("motor está encendido"), Qt::CaseInsensitive) ||
+            statusMsg.contains(QStringLiteral("KOEO"), Qt::CaseInsensitive));
+
+    // Caso 2: Simular KOEO (0 RPM, 0 km/h, Batería 12.6V) -> Debe ejecutarse exitosamente
+    mockDriver.setResponse(QStringLiteral("01 0C"), QStringLiteral("7E8 04 41 0C 00 00 \r\r>"));
+    mockDriver.setResponse(QStringLiteral("01 0D"), QStringLiteral("7E8 03 41 0D 00 \r\r>"));
+    mockDriver.setResponse(QStringLiteral("AT RV"), QStringLiteral("12.6V\r\r>"));
+    mockDriver.setResponse(QStringLiteral("04"), QStringLiteral("7E8 01 44 \r\r>"));
+
+    bool okKoeo = obd.clearDtcs(true, &statusMsg);
+    QVERIFY2(okKoeo, "clearDtcs debe tener éxito en condiciones KOEO válidas");
+    QVERIFY(statusMsg.contains(QStringLiteral("exitosamente"), Qt::CaseInsensitive));
+
+    // Caso 3: Batería baja (< 11.5 V, ej. 10.8 V) -> Candado 3 debe bloquear
+    mockDriver.setResponse(QStringLiteral("AT RV"), QStringLiteral("10.8V\r\r>"));
+    bool okLowBattery = obd.clearDtcs(true, &statusMsg);
+    QVERIFY2(!okLowBattery, "clearDtcs no debe permitir borrado con batería baja");
+    QVERIFY(statusMsg.contains(QStringLiteral("batería"), Qt::CaseInsensitive) ||
+            statusMsg.contains(QStringLiteral("bajo"), Qt::CaseInsensitive));
+
+    // Caso 4: Vehículo en movimiento (> 0 km/h, ej. 30 km/h = 0x1E) -> Candado 2 debe bloquear
+    mockDriver.setResponse(QStringLiteral("AT RV"), QStringLiteral("12.6V\r\r>"));
+    mockDriver.setResponse(QStringLiteral("01 0D"), QStringLiteral("7E8 03 41 0D 1E \r\r>"));
+    bool okMoving = obd.clearDtcs(true, &statusMsg);
+    QVERIFY2(!okMoving, "clearDtcs no debe permitir borrado con vehículo en movimiento");
+    QVERIFY(statusMsg.contains(QStringLiteral("detenido"), Qt::CaseInsensitive));
 }
 
 QTEST_MAIN(TestObdSimulator)

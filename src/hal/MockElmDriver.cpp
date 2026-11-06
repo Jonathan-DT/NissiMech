@@ -64,6 +64,22 @@ void MockElmDriver::setCurrentCra(const QString& cra)
     m_currentCra = cra.trimmed().toUpper();
 }
 
+void MockElmDriver::setResponse(const QString& command, const QString& response, const QString& header)
+{
+    QString normCmd = command.trimmed().toUpper();
+    QString compactCmd = normCmd;
+    compactCmd.remove(QLatin1Char(' '));
+    QString normHdr = header.trimmed().toUpper();
+
+    if (normHdr.isEmpty() || normHdr == QStringLiteral("*")) {
+        m_wildcardResponses.insert(normCmd, response);
+        m_wildcardResponses.insert(compactCmd, response);
+    } else {
+        m_scenarioResponses.insert(qMakePair(normHdr, normCmd), response);
+        m_scenarioResponses.insert(qMakePair(normHdr, compactCmd), response);
+    }
+}
+
 bool MockElmDriver::loadScenario(const QString& scenarioPath)
 {
     QString targetPath = scenarioPath;

@@ -72,7 +72,7 @@ QString SerialElmDriver::sendRawCommand(const QString& cmd, int timeoutMs)
 
     // Regla de seguridad de ECU obligatoria
     QString blockReason;
-    if (!SafetyGuard::isCommandSafe(cmd, false, &blockReason)) {
+    if (!SafetyGuard::isCommandSafe(cmd, SafetyGuard::isUserConfirmedClearDtc(), &blockReason)) {
         emit errorOccurred(QStringLiteral("Comando bloqueado por SafetyGuard: %1 (%2)").arg(cmd, blockReason));
         return QString();
     }
@@ -97,6 +97,8 @@ QString SerialElmDriver::sendRawCommand(const QString& cmd, int timeoutMs)
 
         if (m_serialPort.waitForReadyRead(remaining)) {
             QByteArray chunk = m_serialPort.readAll();
+            // Filtrar nulos ocasionales (0x00) insertados por UART/ELM327 según hoja de datos
+            chunk.replace('\0', QByteArray());
             responseBuffer.append(QString::fromLatin1(chunk));
 
             // El fin de mensaje en ELM327 está delimitado por el carácter prompt '>'

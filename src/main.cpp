@@ -6,6 +6,11 @@
 #include <QVariantMap>
 #include <QDir>
 #include <QFileInfo>
+#include <QFile>
+#include <QTextStream>
+#include <QDateTime>
+#include <QTime>
+#include <QSerialPortInfo>
 #include <QDebug>
 #include <memory>
 
@@ -38,6 +43,9 @@ class DiagnosticController : public QObject
     Q_PROPERTY(QString activeProtocol READ activeProtocol NOTIFY activeProtocolChanged)
     Q_PROPERTY(QVariantList availableModules READ availableModules NOTIFY availableModulesChanged)
     Q_PROPERTY(QStringList availableSignals READ availableSignals NOTIFY availableSignalsChanged)
+    Q_PROPERTY(QVariantList availableSerialPorts READ availableSerialPorts NOTIFY availableSerialPortsChanged)
+    Q_PROPERTY(QString selectedSerialPort READ selectedSerialPort WRITE setSelectedSerialPort NOTIFY selectedSerialPortChanged)
+    Q_PROPERTY(QStringList communicationLog READ communicationLog NOTIFY communicationLogChanged)
 
     // Valores en vivo
     Q_PROPERTY(double rpm READ rpm NOTIFY rpmChanged)
@@ -66,6 +74,7 @@ public:
             QStringLiteral("Hardware Nativo: Linux SocketCAN (can0)")
         };
 
+        refreshSerialPorts();
         discoverVehicles();
         if (!m_availableVehicles.isEmpty()) {
             loadVehicleProfile(0);
@@ -101,6 +110,15 @@ public:
     QString activeProtocol() const { return m_activeProtocol; }
     QVariantList availableModules() const { return m_availableModules; }
     QStringList availableSignals() const { return m_availableSignals; }
+    QVariantList availableSerialPorts() const { return m_availableSerialPorts; }
+    QString selectedSerialPort() const { return m_selectedSerialPort; }
+    void setSelectedSerialPort(const QString& port) {
+        if (m_selectedSerialPort != port) {
+            m_selectedSerialPort = port;
+            emit selectedSerialPortChanged();
+        }
+    }
+    QStringList communicationLog() const { return m_communicationLog; }
 
     double rpm() const { return m_rpm; }
     double speed() const { return m_speed; }
@@ -121,7 +139,11 @@ public slots:
         if (m_selectedAdapterIndex == 0) {
             ok = m_driver->openConnection(QStringLiteral("MOCK"));
         } else if (m_selectedAdapterIndex == 1) {
-            ok = m_driver->openConnection(portName.isEmpty() ? QStringLiteral("/dev/ttyUSB0") : portName, 115200);
+            QString port = portName;
+            if (port.isEmpty()) {
+                port = !m_selectedSerialPort.isEmpty() ? m_selectedSerialPort : QStringLiteral("/dev/ttyUSB0");
+            }
+            ok = m_driver->openConnection(port, 115200);
         } else if (m_selectedAdapterIndex == 2) {
             ok = m_driver->openConnection(portName.isEmpty() ? QStringLiteral("can0") : portName, 500000);
         }
@@ -130,12 +152,16 @@ public slots:
             m_obdProtocol = std::make_unique<ObdProtocol>(m_driver.get(), m_dtcManager.get(), m_obdbLoader.get(), m_dbcParser.get());
             m_udsProtocol = std::make_unique<UdsProtocol>(m_driver.get(), m_dtcManager.get(), m_obdbLoader.get(), m_dbcParser.get());
 
+            addLogEntry(QStringLiteral("INFO"), QStringLiteral("Conexión establecida con %1").arg(m_availableAdapters.value(m_selectedAdapterIndex)));
+
             // Detectar protocolo físico real/simulado
             detectVehicleProtocol();
 
             m_pollTimer->start(200);
             pollVin();
             readStoredDtcs();
+        } else {
+            addLogEntry(QStringLiteral("ERROR"), QStringLiteral("No se pudo conectar al adaptador (%1).").arg(m_availableAdapters.value(m_selectedAdapterIndex)));
         }
         emit connectionStateChanged();
     }
@@ -148,6 +174,7 @@ public slots:
         m_rpm = 0.0;
         m_speed = 0.0;
         m_activeProtocol = QStringLiteral("Desconectado");
+        addLogEntry(QStringLiteral("INFO"), QStringLiteral("Adaptador desconectado por el usuario."));
         emit activeProtocolChanged();
         emit rpmChanged();
         emit speedChanged();
@@ -224,13 +251,158 @@ public slots:
         updateDtcList(dtcs);
     }
 
-    void clearDtcs(bool userConfirmed) {
-        if (!isConnected() || !m_obdProtocol) return;
-        bool ok = m_obdProtocol->clearDtcs(userConfirmed);
-        if (ok) {
-            m_dtcList.clear();
-            emit dtcListChanged();
+    Q_INVOKABLE void refreshSerialPorts() {
+        m_availableSerialPorts.clear();
+        QString recommendedPort;
+        const auto ports = QSerialPortInfo::availablePorts();
+        const QStringList keywords = {
+            QStringLiteral("vLinker"),
+            QStringLiteral("OBDLink"),
+            QStringLiteral("STN"),
+            QStringLiteral("FTDI"),
+            QStringLiteral("CH340"),
+            QStringLiteral("CP210")
+        };
+
+        for (const QSerialPortInfo& info : ports) {
+            QVariantMap portMap;
+            portMap[QStringLiteral("portName")] = info.portName();
+            portMap[QStringLiteral("systemLocation")] = info.systemLocation();
+            portMap[QStringLiteral("description")] = info.description();
+            portMap[QStringLiteral("manufacturer")] = info.manufacturer();
+
+            bool isRec = false;
+            for (const QString& kw : keywords) {
+                if (info.description().contains(kw, Qt::CaseInsensitive) ||
+                    info.manufacturer().contains(kw, Qt::CaseInsensitive)) {
+                    isRec = true;
+                    break;
+                }
+            }
+            portMap[QStringLiteral("isRecommended")] = isRec;
+            m_availableSerialPorts.append(portMap);
+
+            if (isRec && recommendedPort.isEmpty()) {
+                recommendedPort = info.systemLocation().isEmpty() ? info.portName() : info.systemLocation();
+            }
         }
+
+        if (!recommendedPort.isEmpty()) {
+            setSelectedSerialPort(recommendedPort);
+        } else if (!m_availableSerialPorts.isEmpty() && m_selectedSerialPort.isEmpty()) {
+            const auto firstMap = m_availableSerialPorts.first().toMap();
+            QString loc = firstMap.value(QStringLiteral("systemLocation")).toString();
+            if (loc.isEmpty()) loc = firstMap.value(QStringLiteral("portName")).toString();
+            setSelectedSerialPort(loc);
+        }
+
+        emit availableSerialPortsChanged();
+    }
+
+    Q_INVOKABLE void sendDiagnosticCommand(const QString& rawCmd) {
+        if (!m_driver || !m_driver->isConnected()) {
+            addLogEntry(QStringLiteral("ERROR"), QStringLiteral("Adaptador desconectado. Conecte un adaptador para transmitir."));
+            return;
+        }
+
+        QString trimmedCmd = rawCmd.trimmed();
+        if (trimmedCmd.isEmpty()) return;
+
+        QString blockReason;
+        if (!SafetyGuard::isCommandSafe(trimmedCmd, false, &blockReason)) {
+            QString timeStr = QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz"));
+            QString msg = QStringLiteral("[%1] [BLOQUEADO] Comando rechazado por SafetyGuard: %2 (%3)")
+                              .arg(timeStr, trimmedCmd, blockReason);
+            m_communicationLog.append(msg);
+            while (m_communicationLog.size() > 300) {
+                m_communicationLog.removeFirst();
+            }
+            emit communicationLogChanged();
+            return;
+        }
+
+        addLogEntry(QStringLiteral("TX"), trimmedCmd);
+        m_driver->sendRawCommand(trimmedCmd);
+    }
+
+    Q_INVOKABLE void clearCommunicationLog() {
+        m_communicationLog.clear();
+        emit communicationLogChanged();
+    }
+
+    Q_INVOKABLE bool exportCommunicationLog(const QString& customPath = QString()) {
+        QString filePath = customPath;
+        if (filePath.isEmpty()) {
+            QString timeStamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss"));
+            filePath = QStringLiteral("nissimech_comm_log_%1.txt").arg(timeStamp);
+        }
+
+        QFile file(filePath);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            emit statusAlert(QStringLiteral("Exportar Log"),
+                             QStringLiteral("No se pudo crear el archivo de log en: %1").arg(filePath),
+                             true);
+            return false;
+        }
+
+        QTextStream out(&file);
+        out << "=========================================================\n";
+        out << "NissiMech OBD2/CAN Communication Log Export\n";
+        out << "Fecha: " << QDateTime::currentDateTime().toString(Qt::ISODate) << "\n";
+        out << "Vehículo: " << m_activeVehicleName << "\n";
+        out << "Protocolo: " << m_activeProtocol << "\n";
+        out << "Total entradas: " << m_communicationLog.size() << "\n";
+        out << "=========================================================\n\n";
+
+        for (const QString& line : m_communicationLog) {
+            out << line << "\n";
+        }
+        file.close();
+
+        emit statusAlert(QStringLiteral("Exportar Log"),
+                         QStringLiteral("Log exportado exitosamente a:\n%1").arg(QFileInfo(filePath).absoluteFilePath()),
+                         false);
+        return true;
+    }
+
+    Q_INVOKABLE void clearDtcs(bool userConfirmed) {
+        if (!isConnected() || !m_obdProtocol) {
+            emit statusAlert(QStringLiteral("Error de Conexión"),
+                             QStringLiteral("El escáner no está conectado al vehículo."),
+                             true);
+            return;
+        }
+
+        QString statusMsg;
+        addLogEntry(QStringLiteral("TX"), QStringLiteral("04 (Solicitud de borrado DTC Modo 04)"));
+        bool ok = m_obdProtocol->clearDtcs(userConfirmed, &statusMsg);
+        addLogEntry(ok ? QStringLiteral("INFO") : QStringLiteral("BLOQUEADO"), statusMsg);
+
+        emit statusAlert(QStringLiteral("Borrado de Códigos DTC"), statusMsg, !ok);
+
+        if (ok) {
+            readStoredDtcs();
+        }
+    }
+
+    void addLogEntry(const QString& direction, const QString& message) {
+        QString timeStr = QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz"));
+        QString entry;
+        if (direction == QStringLiteral("TX")) {
+            entry = QStringLiteral("[%1] TX -> %2").arg(timeStr, message);
+        } else if (direction == QStringLiteral("RX")) {
+            entry = QStringLiteral("[%1] RX <- %2").arg(timeStr, message);
+        } else if (direction == QStringLiteral("BLOQUEADO")) {
+            entry = QStringLiteral("[%1] [BLOQUEADO] %2").arg(timeStr, message);
+        } else {
+            entry = QStringLiteral("[%1] [%2] %3").arg(timeStr, direction, message);
+        }
+
+        m_communicationLog.append(entry);
+        while (m_communicationLog.size() > 300) {
+            m_communicationLog.removeFirst();
+        }
+        emit communicationLogChanged();
     }
 
 signals:
@@ -242,6 +414,10 @@ signals:
     void activeProtocolChanged();
     void availableModulesChanged();
     void availableSignalsChanged();
+    void availableSerialPortsChanged();
+    void selectedSerialPortChanged();
+    void communicationLogChanged();
+    void statusAlert(const QString& title, const QString& message, bool isError);
     void rpmChanged();
     void speedChanged();
     void coolantTempChanged();
@@ -414,6 +590,9 @@ private:
     }
 
     void setupDriver() {
+        if (m_driver) {
+            m_driver->disconnect(this);
+        }
         if (m_selectedAdapterIndex == 0) {
             auto mock = std::make_unique<MockElmDriver>();
             m_driver = std::move(mock);
@@ -422,6 +601,24 @@ private:
             m_driver = std::make_unique<SerialElmDriver>();
         } else if (m_selectedAdapterIndex == 2) {
             m_driver = std::make_unique<SocketCanDriver>();
+        }
+
+        if (m_driver) {
+            connect(m_driver.get(), &IObdInterface::rawDataReceived, this, [this](const QString& data) {
+                QString clean = data.trimmed();
+                clean.replace(QLatin1Char('\r'), QLatin1Char(' '));
+                clean.replace(QLatin1Char('\n'), QLatin1Char(' '));
+                while (clean.contains(QStringLiteral("  "))) {
+                    clean.replace(QStringLiteral("  "), QStringLiteral(" "));
+                }
+                if (!clean.isEmpty()) {
+                    addLogEntry(QStringLiteral("RX"), clean);
+                }
+            });
+
+            connect(m_driver.get(), &IObdInterface::errorOccurred, this, [this](const QString& err) {
+                addLogEntry(QStringLiteral("ERROR"), err);
+            });
         }
     }
 
@@ -473,6 +670,10 @@ private:
     double m_batteryVoltage{12.6};
     QString m_vin;
     QVariantList m_dtcList;
+
+    QVariantList m_availableSerialPorts;
+    QString m_selectedSerialPort;
+    QStringList m_communicationLog;
 };
 
 int main(int argc, char* argv[])

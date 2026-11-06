@@ -22,10 +22,20 @@ Compatible con talleres mecánicos, laboratorios de ingeniería automotriz y dis
   - **ISO 15765-4 / ISO 15765-2 (ISO-TP):** Reensamblado completo de tramas Single Frame (`0x0N`), First Frame (`0x1N`) y Consecutive Frames (`0x2N`) previo a la extracción de datos de señales y lectura de VIN de 17 caracteres.
   - **ISO 14229-1 (UDS):** Servicio `$19 $02` (ReadDTCInformationByStatusMask) con extracción de Fault Type Byte (FTB) y Status Byte, `$22` (ReadDataByIdentifier) y direccionamiento físico dinámico por ECU (`selectPhysicalModule`).
 
-- **Cortafuegos de Seguridad de ECU (`SafetyGuard`):**
+- **Cortafuegos de Seguridad de ECU (`SafetyGuard`) y Triple Candado KOEO:**
   - **Lista Negra Absoluta:** Bloqueo inquebrantable de modos de escritura, control y reprogramación (`10 02`, `11` ECUReset, `27` SecurityAccess, `28` CommunicationControl, `2E` WriteDataByIdentifier, `2F` InputOutputControl, `31` RoutineControl, `34`/`36`/`37` Flasheo de firmware) y comandos peligrosos del adaptador (`AT BI`, `AT CSM0`, `AT PP`).
-  - **Enclavamiento de Borrado:** Bloqueo de borrado de códigos (Modo `04` / UDS `14`) a menos que el usuario lo confirme expresamente con el vehículo seguro.
+  - **Triple Candado de Hardware (Modo 04 / KOEO Ultra-Seguro):** El borrado de DTCs y restablecimiento de monitores de emisiones (`04`) exige tres candados físicos concurrentes antes de autorizar el envío a la ECU:
+    1. *Motor apagado:* Régimen menor o igual a 50 RPM (`SAE_ENGINE_RPM` o PID `01 0C`).
+    2. *Vehículo detenido:* Velocidad de 0 km/h (`SAE_VEHICLE_SPEED` o PID `01 0D`).
+    3. *Batería estable:* Tensión mayor o igual a 11.5 V (`AT RV`) para prevenir corrupción de memorias no volátiles.
+  - **Enclavamiento de Borrado:** Bloqueo incondicional si el usuario no otorga confirmación expresa en el cuadro de diálogo.
   - **Lista Blanca Dinámica:** Solo se autorizan cabeceras `AT SH` y comandos de diagnóstico registrados en el perfil vehicular JSON/DBC cargado para la sesión.
+
+- **Conectividad Física de Grado Automotriz y Terminal Crudo:**
+  - **Autodetección de Puertos USB (`QSerialPortInfo`):** Detección dinámica y selección prioritaria de adaptadores recomendados (**Vgate vLinker**, **OBDLink**, STN, FTDI, CH340, CP210).
+  - **Filtro de Nulos UART:** Supresión automática de bytes nulos (`0x00`) producidos por jitter en el bus RS232/USB del ELM327.
+  - **Soporte de Cabeceras Legadas K-Line (ISO 9141-2 / KWP2000):** Supresión de cabeceras de 3 bytes (`48 6B 10` o `80 F1 10`) y omisión del checksum final de 1 byte.
+  - **Consola y Log de Tramas Crudas (Raw Terminal Log):** Búfer circular de 300 tramas con timestamps milimétricos `[HH:mm:ss.zzz]`, diferenciación visual de flujo (`TX ->` cyan, `RX <-` verde, `[BLOQUEADO]` rojo, errores y alertas), envío manual validado por `SafetyGuard`, botones de comandos rápidos (`AT DP`, `AT RV`, `01 00`, `01 0C`, `09 02`) y exportación a archivo `.txt`.
 
 - **Cumplimiento Estricto de Licenciamiento Comercial (LGPLv3):**
   - Enlace dinámico (`SHARED`) únicamente con módulos LGPLv3: `Qt6Core`, `Qt6Gui`, `Qt6Qml`, `Qt6Quick`, `Qt6SerialPort`, `Qt6SerialBus`, `Qt6Sql` y `Qt6Test`.
@@ -87,7 +97,7 @@ OBD2_Scanner_Pro/
 │       └── LiveGraphView.qml   # Osciloscopio en tiempo real renderizado sobre Canvas
 └── tests/
     ├── CMakeLists.txt          # Configuración del ejecutable de pruebas
-    └── tst_obd_simulator.cpp   # Suite automatizada QtTest (9 suites / 100% passing)
+    └── tst_obd_simulator.cpp   # Suite automatizada QtTest (10 suites / 100% passing)
 ```
 
 ---
@@ -161,7 +171,7 @@ ctest --test-dir build --output-on-failure
 
 Salida esperada (100% de pruebas aprobadas):
 ```text
-Totals: 9 passed, 0 failed, 0 skipped, 0 blacklisted, 161ms
+Totals: 10 passed, 0 failed, 0 skipped, 0 blacklisted, 158ms
 ********* Finished testing of TestObdSimulator *********
 ```
 

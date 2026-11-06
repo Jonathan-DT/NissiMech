@@ -49,7 +49,7 @@ public:
     // Gestión de fallas DTC (SAE J1979)
     QList<DtcInfo> readStoredDtcs();
     QList<DtcInfo> readPendingDtcs();
-    bool clearDtcs(bool userConfirmed);
+    bool clearDtcs(bool userConfirmed, QString* statusMessage = nullptr);
 
     // Identificación de vehículo
     QString readVin();

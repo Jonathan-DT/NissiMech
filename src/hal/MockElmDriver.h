@@ -27,6 +27,11 @@ public:
      */
     bool loadScenario(const QString& scenarioPath);
 
+    /**
+     * @brief Establece o sobrescribe una respuesta simulada para pruebas dinámicas.
+     */
+    void setResponse(const QString& command, const QString& response, const QString& header = QStringLiteral("*"));
+
     QString scenarioName() const { return m_scenarioName; }
     QString vehicleFolder() const { return m_vehicleFolder; }
 
