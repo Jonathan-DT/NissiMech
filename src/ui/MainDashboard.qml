@@ -145,6 +145,15 @@ ApplicationWindow {
                 text: "can0"
                 visible: adapterSelector.currentIndex === 2
                 Layout.preferredWidth: 100
+                color: "#38bdf8"
+                placeholderTextColor: "#64748b"
+                font.family: "monospace"
+                background: Rectangle {
+                    color: "#0f172a"
+                    radius: 4
+                    border.color: canPortField.activeFocus ? "#38bdf8" : "#334155"
+                    border.width: 1
+                }
             }
 
             Button {
@@ -809,8 +818,21 @@ ApplicationWindow {
                             id: rawCmdField
                             Layout.fillWidth: true
                             placeholderText: "Enviar comando AT / OBD2 / UDS (ej. AT DP, AT RV, 01 00, 21 01)..."
-                            color: "#f8fafc"
+                            placeholderTextColor: "#64748b"
+                            color: "#38bdf8"
+                            selectedTextColor: "#ffffff"
+                            selectionColor: "#0284c7"
                             font.family: "monospace"
+                            font.pixelSize: 13
+                            font.bold: true
+                            leftPadding: 12
+                            rightPadding: 12
+                            background: Rectangle {
+                                color: "#0f172a"
+                                radius: 6
+                                border.color: rawCmdField.activeFocus ? "#38bdf8" : "#334155"
+                                border.width: rawCmdField.activeFocus ? 2 : 1
+                            }
                             onAccepted: {
                                 if (rawCmdField.text.trim().length > 0) {
                                     diagnosticController.sendDiagnosticCommand(rawCmdField.text.trim());
