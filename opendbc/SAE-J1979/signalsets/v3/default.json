@@ -1,0 +1,173 @@
+{
+  "ecu": [
+    {
+      "hdr": "7DF",
+      "type": "broadcast"
+    },
+    {
+      "hdr": "7E0",
+      "type": "engine"
+    }
+  ],
+  "commands": [
+    {
+      "hdr": "7DF",
+      "rax": "7E8",
+      "cmd": {
+        "01": "0C"
+      },
+      "signals": [
+        {
+          "id": "SAE_ENGINE_RPM",
+          "name": "Engine RPM",
+          "suggestedMetric": "engineSpeed",
+          "fmt": {
+            "bix": 0,
+            "len": 16,
+            "div": 4.0,
+            "unit": "rpm"
+          }
+        }
+      ]
+    },
+    {
+      "hdr": "7DF",
+      "rax": "7E8",
+      "cmd": {
+        "01": "0D"
+      },
+      "signals": [
+        {
+          "id": "SAE_VEHICLE_SPEED",
+          "name": "Vehicle Speed",
+          "suggestedMetric": "speed",
+          "fmt": {
+            "bix": 0,
+            "len": 8,
+            "unit": "km/h"
+          }
+        }
+      ]
+    },
+    {
+      "hdr": "7DF",
+      "rax": "7E8",
+      "cmd": {
+        "01": "05"
+      },
+      "signals": [
+        {
+          "id": "SAE_COOLANT_TEMP",
+          "name": "Engine Coolant Temperature",
+          "suggestedMetric": "coolantTemperature",
+          "fmt": {
+            "bix": 0,
+            "len": 8,
+            "add": -40.0,
+            "unit": "celsius"
+          }
+        }
+      ]
+    },
+    {
+      "hdr": "7DF",
+      "rax": "7E8",
+      "cmd": {
+        "01": "0F"
+      },
+      "signals": [
+        {
+          "id": "SAE_INTAKE_AIR_TEMP",
+          "name": "Intake Air Temperature",
+          "suggestedMetric": "intakeAirTemperature",
+          "fmt": {
+            "bix": 0,
+            "len": 8,
+            "add": -40.0,
+            "unit": "celsius"
+          }
+        }
+      ]
+    },
+    {
+      "hdr": "7DF",
+      "rax": "7E8",
+      "cmd": {
+        "01": "10"
+      },
+      "signals": [
+        {
+          "id": "SAE_MAF_AIR_FLOW",
+          "name": "Mass Air Flow Rate",
+          "suggestedMetric": "massAirFlow",
+          "fmt": {
+            "bix": 0,
+            "len": 16,
+            "div": 100.0,
+            "unit": "g/s"
+          }
+        }
+      ]
+    },
+    {
+      "hdr": "7DF",
+      "rax": "7E8",
+      "cmd": {
+        "01": "11"
+      },
+      "signals": [
+        {
+          "id": "SAE_THROTTLE_POSITION",
+          "name": "Throttle Position",
+          "suggestedMetric": "throttlePosition",
+          "fmt": {
+            "bix": 0,
+            "len": 8,
+            "mul": 100.0,
+            "div": 255.0,
+            "unit": "percent"
+          }
+        }
+      ]
+    },
+    {
+      "hdr": "7DF",
+      "rax": "7E8",
+      "cmd": {
+        "01": "42"
+      },
+      "signals": [
+        {
+          "id": "SAE_CONTROL_MODULE_VOLTAGE",
+          "name": "Control Module Voltage",
+          "suggestedMetric": "starterBatteryVoltage",
+          "fmt": {
+            "bix": 0,
+            "len": 16,
+            "div": 1000.0,
+            "unit": "volts"
+          }
+        }
+      ]
+    },
+    {
+      "hdr": "7DF",
+      "rax": "7E8",
+      "cmd": {
+        "09": "02"
+      },
+      "signals": [
+        {
+          "id": "SAE_VIN",
+          "name": "Vehicle Identification Number",
+          "fmt": {
+            "bix": 0,
+            "len": 136,
+            "unit": "ascii"
+          }
+        }
+      ]
+    }
+  ]
+}
+

@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(OBD2_Scanner_Pro
-    VERSION 1.0.0
-    DESCRIPTION "Sistema de Diagnóstico Vehicular Multiplataforma Avanzado OBD2/UDS"
+    VERSION 2.0.0
+    DESCRIPTION "Sistema de Diagnóstico Vehicular Multiplataforma Avanzado OBD2/UDS (OBDb / opendbc)"
     LANGUAGES CXX
 )
 
@@ -17,15 +17,19 @@ set(CMAKE_AUTOUIC ON)
 
 # Soporte para dependencias en prefijo adicional si están presentes en /tmp
 if(EXISTS "/tmp/qt6_deps/usr")
-    list(PREPEND CMAKE_PREFIX_PATH "/tmp/qt6_deps/usr")
-    set(Qt6SerialPort_DIR "/tmp/qt6_deps/usr/lib/cmake/Qt6SerialPort" CACHE PATH "" FORCE)
-    set(Qt6SerialBus_DIR "/tmp/qt6_deps/usr/lib/cmake/Qt6SerialBus" CACHE PATH "" FORCE)
-    link_directories("/tmp/qt6_deps/usr/lib")
+    list(PREPEND CMAKE_PREFIX_PATH "/tmp/qt6_deps/usr" "/tmp/qt6_deps/usr/lib/x86_64-linux-gnu/cmake")
+    set(Qt6SerialPort_DIR "/tmp/qt6_deps/usr/lib/x86_64-linux-gnu/cmake/Qt6SerialPort" CACHE PATH "" FORCE)
+    set(Qt6SerialBus_DIR "/tmp/qt6_deps/usr/lib/x86_64-linux-gnu/cmake/Qt6SerialBus" CACHE PATH "" FORCE)
+    set(OPENGL_opengl_LIBRARY "/tmp/qt6_deps/usr/lib/x86_64-linux-gnu/libOpenGL.so" CACHE FILEPATH "" FORCE)
+    set(OPENGL_glx_LIBRARY "/tmp/qt6_deps/usr/lib/x86_64-linux-gnu/libGLX.so" CACHE FILEPATH "" FORCE)
+    set(OPENGL_INCLUDE_DIR "/tmp/qt6_deps/usr/include" CACHE PATH "" FORCE)
+    set(XKB_LIBRARY "/tmp/qt6_deps/usr/lib/x86_64-linux-gnu/libxkbcommon.so" CACHE FILEPATH "" FORCE)
+    set(XKB_INCLUDE_DIR "/tmp/qt6_deps/usr/include" CACHE PATH "" FORCE)
+    link_directories("/tmp/qt6_deps/usr/lib" "/tmp/qt6_deps/usr/lib/x86_64-linux-gnu")
 endif()
 
 # Cumplimiento estricto LGPLv3 para uso comercial:
 # Enlace dinámico exclusivo con módulos LGPLv3 de Qt6.
-# PROHIBIDO enlazar QtCharts o QtGraphs (GPLv3/Comerciales).
 find_package(Qt6 6.2 REQUIRED COMPONENTS
     Core
     Gui
@@ -49,6 +53,12 @@ set(PROJECT_SOURCES
     src/hal/MockElmDriver.cpp
     src/core/SafetyGuard.h
     src/core/SafetyGuard.cpp
+    src/core/SignalExtractor.h
+    src/core/SignalExtractor.cpp
+    src/core/ObdbJsonLoader.h
+    src/core/ObdbJsonLoader.cpp
+    src/core/DbcParser.h
+    src/core/DbcParser.cpp
     src/core/ObdProtocol.h
     src/core/ObdProtocol.cpp
     src/core/UdsProtocol.h
@@ -94,9 +104,12 @@ else()
     target_compile_options(OBD2_Scanner_Pro PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-# Asegurar que la base de datos se copie al directorio de compilación
+# Asegurar que la base de datos, escenarios y opendbc se copien al directorio de compilación
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/database/dtc_codes_es.sqlite"
+     "${CMAKE_CURRENT_SOURCE_DIR}/database/scenarios"
      DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/database")
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/opendbc"
+     DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 
 # Suite de pruebas automatizadas
 enable_testing()

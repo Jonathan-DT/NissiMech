@@ -2,38 +2,26 @@
 #include "PidDecoder.h"
 #include <QDebug>
 
-UdsProtocol::UdsProtocol(IObdInterface* interface, DtcManager* dtcManager, QObject* parent)
+UdsProtocol::UdsProtocol(IObdInterface* interface,
+                         DtcManager* dtcManager,
+                         ObdbJsonLoader* obdbLoader,
+                         DbcParser* dbcParser,
+                         QObject* parent)
     : QObject(parent)
     , m_interface(interface)
     , m_dtcManager(dtcManager)
+    , m_obdbLoader(obdbLoader)
+    , m_dbcParser(dbcParser)
 {
 }
 
-bool UdsProtocol::selectModule(TargetModule module)
+bool UdsProtocol::selectPhysicalModule(const QString& txHeader, const QString& rxCra)
 {
-    if (!m_interface) return false;
+    if (!m_interface || txHeader.isEmpty()) return false;
 
-    switch (module) {
-    case TargetModule::Engine_ECM:
-        m_interface->sendRawCommand(QStringLiteral("AT SH 7E0"));
-        m_interface->sendRawCommand(QStringLiteral("AT CRA 7E8"));
-        break;
-    case TargetModule::Transmission_TCM:
-        m_interface->sendRawCommand(QStringLiteral("AT SH 7E1"));
-        m_interface->sendRawCommand(QStringLiteral("AT CRA 7E9"));
-        break;
-    case TargetModule::Brakes_ABS_ISO:
-        m_interface->sendRawCommand(QStringLiteral("AT SH 7E2"));
-        m_interface->sendRawCommand(QStringLiteral("AT CRA 7EA"));
-        break;
-    case TargetModule::Brakes_ABS_Toyota:
-        m_interface->sendRawCommand(QStringLiteral("AT SH 7B0"));
-        m_interface->sendRawCommand(QStringLiteral("AT CRA 7B8"));
-        break;
-    case TargetModule::Brakes_ABS_Ford_MSCAN:
-        m_interface->sendRawCommand(QStringLiteral("AT SH 760"));
-        m_interface->sendRawCommand(QStringLiteral("AT CRA 768"));
-        break;
+    m_interface->sendRawCommand(QStringLiteral("AT SH ") + txHeader.trimmed().toUpper());
+    if (!rxCra.isEmpty()) {
+        m_interface->sendRawCommand(QStringLiteral("AT CRA ") + rxCra.trimmed().toUpper());
     }
     return true;
 }
@@ -46,20 +34,20 @@ bool UdsProtocol::restoreFunctionalAddressing()
     return true;
 }
 
-QList<DtcInfo> UdsProtocol::readModuleDtcs(TargetModule module)
+QList<DtcInfo> UdsProtocol::readModuleDtcs(const QString& txHeader, const QString& rxCra)
 {
-    if (!m_interface || !m_dtcManager) return {};
+    if (!m_interface || !m_dtcManager || txHeader.isEmpty()) return {};
 
-    selectModule(module);
+    selectPhysicalModule(txHeader, rxCra);
 
-    // Enviar servicio UDS 0x19 0x02 con máscara 0xFF (ReadDTCInformationByStatusMask)
+    // Servicio UDS 0x19 0x02 con máscara 0xFF (ReadDTCInformationByStatusMask)
     QString resp = m_interface->sendRawCommand(QStringLiteral("19 02 FF"));
     QList<DtcInfo> dtcs;
 
     if (resp.contains(QStringLiteral("59 02"))) {
         dtcs = m_dtcManager->parseDtcResponse(resp);
     } else if (resp.contains(QStringLiteral("NO DATA")) || resp.contains(QStringLiteral("?"))) {
-        // Fallback a modo OBD 03 físico en caso de ECUs mixtas
+        // Fallback a modo OBD 03 físico si el módulo no soporta UDS 19 02
         QString fallbackResp = m_interface->sendRawCommand(QStringLiteral("03"));
         dtcs = m_dtcManager->parseDtcResponse(fallbackResp);
     }
@@ -68,35 +56,23 @@ QList<DtcInfo> UdsProtocol::readModuleDtcs(TargetModule module)
     return dtcs;
 }
 
-QByteArray UdsProtocol::readDataByIdentifier(TargetModule module, uint16_t did)
+QByteArray UdsProtocol::readDataByIdentifier(const QString& txHeader, uint16_t did, const QString& rxCra)
 {
-    if (!m_interface) return QByteArray();
+    if (!m_interface || txHeader.isEmpty()) return QByteArray();
 
-    selectModule(module);
+    selectPhysicalModule(txHeader, rxCra);
 
-    QString cmd;
-    QString serviceHex;
-    QString didHex;
-
-    if (module == TargetModule::Brakes_ABS_Toyota && did <= 0xFF) {
-        // En ECUs Toyota K-Line/CAN antiguas se utiliza el servicio 0x21
-        cmd = QStringLiteral("21 %1").arg(did, 2, 16, QLatin1Char('0')).toUpper();
-        serviceHex = QStringLiteral("61");
-        didHex = QStringLiteral("%1").arg(did, 2, 16, QLatin1Char('0')).toUpper();
-    } else {
-        // Estándar UDS ISO 14229 Servicio 0x22
-        uint8_t didHigh = static_cast<uint8_t>((did >> 8) & 0xFF);
-        uint8_t didLow = static_cast<uint8_t>(did & 0xFF);
-        cmd = QStringLiteral("22 %1 %2")
-                  .arg(didHigh, 2, 16, QLatin1Char('0'))
-                  .arg(didLow, 2, 16, QLatin1Char('0'))
-                  .toUpper();
-        serviceHex = QStringLiteral("62");
-        didHex = QStringLiteral("%1 %2")
-                     .arg(didHigh, 2, 16, QLatin1Char('0'))
-                     .arg(didLow, 2, 16, QLatin1Char('0'))
-                     .toUpper();
-    }
+    uint8_t didHigh = static_cast<uint8_t>((did >> 8) & 0xFF);
+    uint8_t didLow = static_cast<uint8_t>(did & 0xFF);
+    QString cmd = QStringLiteral("22 %1 %2")
+                      .arg(didHigh, 2, 16, QLatin1Char('0'))
+                      .arg(didLow, 2, 16, QLatin1Char('0'))
+                      .toUpper();
+    QString serviceHex = QStringLiteral("62");
+    QString didHex = QStringLiteral("%1 %2")
+                         .arg(didHigh, 2, 16, QLatin1Char('0'))
+                         .arg(didLow, 2, 16, QLatin1Char('0'))
+                         .toUpper();
 
     QString resp = m_interface->sendRawCommand(cmd);
     QByteArray data = PidDecoder::extractDataBytes(resp, serviceHex, didHex);
@@ -105,52 +81,26 @@ QByteArray UdsProtocol::readDataByIdentifier(TargetModule module, uint16_t did)
     return data;
 }
 
-double UdsProtocol::readToyotaTransmissionFluidTemp()
+std::optional<double> UdsProtocol::querySignal(const QString& signalId)
 {
-    if (!m_interface) return 0.0;
-
-    selectModule(TargetModule::Transmission_TCM);
-
-    // Intentar PID Toyota 21 82
-    QString resp = m_interface->sendRawCommand(QStringLiteral("21 82"));
-    QByteArray data = PidDecoder::extractDataBytes(resp, QStringLiteral("61"), QStringLiteral("82"));
-
-    if (data.isEmpty()) {
-        // Alternativa UDS 22 1E 1C
-        resp = m_interface->sendRawCommand(QStringLiteral("22 1E 1C"));
-        data = PidDecoder::extractDataBytes(resp, QStringLiteral("62"), QStringLiteral("1E 1C"));
+    if (!m_interface || !m_obdbLoader || !m_obdbLoader->isLoaded()) {
+        return std::nullopt;
     }
 
-    restoreFunctionalAddressing();
+    const ObdbSignal* sig = m_obdbLoader->findSignal(signalId);
+    const ObdbCommand* cmd = m_obdbLoader->findCommandForSignal(signalId);
 
-    if (!data.isEmpty()) {
-        return PidDecoder::decodeToyotaTransTemp(static_cast<uint8_t>(data.at(0)));
-    }
-    return 0.0;
-}
-
-double UdsProtocol::readAbsWheelSpeed(TargetModule module)
-{
-    if (!m_interface) return 0.0;
-
-    selectModule(module);
-    double speed = 0.0;
-
-    if (module == TargetModule::Brakes_ABS_Toyota) {
-        QString resp = m_interface->sendRawCommand(QStringLiteral("21 01"));
-        QByteArray data = PidDecoder::extractDataBytes(resp, QStringLiteral("61"), QStringLiteral("01"));
-        if (!data.isEmpty()) {
-            speed = static_cast<double>(static_cast<uint8_t>(data.at(0)));
+    if (sig && cmd) {
+        if (!cmd->hdr.isEmpty()) {
+            selectPhysicalModule(cmd->hdr, cmd->rax);
         }
-    } else {
-        QString resp = m_interface->sendRawCommand(QStringLiteral("22 00 0D"));
-        QByteArray data = PidDecoder::extractDataBytes(resp, QStringLiteral("62"), QStringLiteral("00 0D"));
-        if (!data.isEmpty()) {
-            speed = static_cast<double>(static_cast<uint8_t>(data.at(0)));
-        }
+
+        QString resp = m_interface->sendRawCommand(cmd->fullCmdHex);
+        auto val = PidDecoder::decodeObdbSignal(resp, cmd->service, cmd->pidHex, sig->fmt);
+
+        restoreFunctionalAddressing();
+        return val;
     }
 
-    restoreFunctionalAddressing();
-    return speed;
+    return std::nullopt;
 }
-

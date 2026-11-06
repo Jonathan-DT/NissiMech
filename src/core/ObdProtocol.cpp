@@ -4,104 +4,86 @@
 #include <QRegularExpression>
 #include <QDebug>
 
-ObdProtocol::ObdProtocol(IObdInterface* interface, DtcManager* dtcManager, QObject* parent)
+ObdProtocol::ObdProtocol(IObdInterface* interface,
+                         DtcManager* dtcManager,
+                         ObdbJsonLoader* obdbLoader,
+                         DbcParser* dbcParser,
+                         QObject* parent)
     : QObject(parent)
     , m_interface(interface)
     , m_dtcManager(dtcManager)
+    , m_obdbLoader(obdbLoader)
+    , m_dbcParser(dbcParser)
 {
 }
 
-bool ObdProtocol::setFunctionalAddressing()
+QString ObdProtocol::detectActiveProtocol()
 {
-    if (!m_interface) return false;
-    m_interface->sendRawCommand(QStringLiteral("AT SH 7DF"));
-    m_interface->sendRawCommand(QStringLiteral("AT CRA"));
-    return true;
-}
+    if (!m_interface) return QStringLiteral("Interfaz no disponible");
 
-bool ObdProtocol::setPhysicalEngineAddressing()
-{
-    if (!m_interface) return false;
-    m_interface->sendRawCommand(QStringLiteral("AT SH 7E0"));
-    m_interface->sendRawCommand(QStringLiteral("AT CRA 7E8"));
-    return true;
-}
+    // 1. Configurar detección automática
+    m_interface->sendRawCommand(QStringLiteral("AT SP 0"));
 
-double ObdProtocol::readRpm()
-{
-    if (!m_interface) return 0.0;
-    QString resp = m_interface->sendRawCommand(QStringLiteral("01 0C"));
-    QByteArray data = PidDecoder::extractDataBytes(resp, QStringLiteral("41"), QStringLiteral("0C"));
-    if (data.size() >= 2) {
-        return PidDecoder::decodeRpm(static_cast<uint8_t>(data.at(0)), static_cast<uint8_t>(data.at(1)));
+    // 2. Transmitir handshake funcional Mode 01 PID 00 para forzar negociación con el bus
+    m_interface->sendRawCommand(QStringLiteral("01 00"));
+
+    // 3. Consultar nombre del protocolo detectado
+    QString dpResp = m_interface->sendRawCommand(QStringLiteral("AT DP")).trimmed();
+    // Limpiar prompt residual
+    dpResp.remove(QLatin1Char('>'));
+    dpResp.remove(QLatin1Char('\r'));
+    dpResp.remove(QLatin1Char('\n'));
+
+    // 4. Consultar número de protocolo
+    QString dpnResp = m_interface->sendRawCommand(QStringLiteral("AT DPN")).trimmed();
+    dpnResp.remove(QLatin1Char('>'));
+    dpnResp.remove(QLatin1Char('\r'));
+    dpnResp.remove(QLatin1Char('\n'));
+
+    QString result;
+    if (!dpResp.isEmpty() && !dpResp.contains(QStringLiteral("?")) && !dpResp.contains(QStringLiteral("ERROR"))) {
+        result = dpResp;
+        if (!dpnResp.isEmpty() && !dpnResp.contains(QStringLiteral("?"))) {
+            result += QStringLiteral(" [Protocolo %1]").arg(dpnResp);
+        }
+    } else {
+        result = QStringLiteral("Protocolo no detectado (Requiere conexión al vehículo)");
     }
-    return 0.0;
+
+    m_activeProtocolDescription = result;
+    return result;
 }
 
-double ObdProtocol::readSpeed()
+std::optional<double> ObdProtocol::querySignal(const QString& signalId)
 {
-    if (!m_interface) return 0.0;
-    QString resp = m_interface->sendRawCommand(QStringLiteral("01 0D"));
-    QByteArray data = PidDecoder::extractDataBytes(resp, QStringLiteral("41"), QStringLiteral("0D"));
-    if (data.size() >= 1) {
-        return PidDecoder::decodeSpeed(static_cast<uint8_t>(data.at(0)));
-    }
-    return 0.0;
-}
+    if (!m_interface) return std::nullopt;
 
-double ObdProtocol::readCoolantTemp()
-{
-    if (!m_interface) return 0.0;
-    QString resp = m_interface->sendRawCommand(QStringLiteral("01 05"));
-    QByteArray data = PidDecoder::extractDataBytes(resp, QStringLiteral("41"), QStringLiteral("05"));
-    if (data.size() >= 1) {
-        return PidDecoder::decodeCoolantTemp(static_cast<uint8_t>(data.at(0)));
-    }
-    return 0.0;
-}
+    // 1. Buscar en el catálogo cargado de OBDb
+    if (m_obdbLoader && m_obdbLoader->isLoaded()) {
+        const ObdbSignal* sig = m_obdbLoader->findSignal(signalId);
+        const ObdbCommand* cmd = m_obdbLoader->findCommandForSignal(signalId);
 
-double ObdProtocol::readIntakeAirTemp()
-{
-    if (!m_interface) return 0.0;
-    QString resp = m_interface->sendRawCommand(QStringLiteral("01 0F"));
-    QByteArray data = PidDecoder::extractDataBytes(resp, QStringLiteral("41"), QStringLiteral("0F"));
-    if (data.size() >= 1) {
-        return PidDecoder::decodeIntakeAirTemp(static_cast<uint8_t>(data.at(0)));
-    }
-    return 0.0;
-}
+        if (sig && cmd) {
+            // Configurar direccionamiento específico si la señal lo define
+            if (!cmd->hdr.isEmpty()) {
+                setAddressing(cmd->hdr, cmd->rax);
+            }
 
-double ObdProtocol::readMaf()
-{
-    if (!m_interface) return 0.0;
-    QString resp = m_interface->sendRawCommand(QStringLiteral("01 10"));
-    QByteArray data = PidDecoder::extractDataBytes(resp, QStringLiteral("41"), QStringLiteral("10"));
-    if (data.size() >= 2) {
-        return PidDecoder::decodeMaf(static_cast<uint8_t>(data.at(0)), static_cast<uint8_t>(data.at(1)));
-    }
-    return 0.0;
-}
+            QString resp = m_interface->sendRawCommand(cmd->fullCmdHex);
+            auto val = PidDecoder::decodeObdbSignal(resp, cmd->service, cmd->pidHex, sig->fmt);
 
-double ObdProtocol::readThrottle()
-{
-    if (!m_interface) return 0.0;
-    QString resp = m_interface->sendRawCommand(QStringLiteral("01 11"));
-    QByteArray data = PidDecoder::extractDataBytes(resp, QStringLiteral("41"), QStringLiteral("11"));
-    if (data.size() >= 1) {
-        return PidDecoder::decodeThrottle(static_cast<uint8_t>(data.at(0)));
-    }
-    return 0.0;
-}
+            // Restaurar direccionamiento funcional estándar si se modificó
+            if (!cmd->hdr.isEmpty() && cmd->hdr != QStringLiteral("7DF")) {
+                setFunctionalAddressing();
+            }
 
-double ObdProtocol::readControlModuleVoltage()
-{
-    if (!m_interface) return 0.0;
-    QString resp = m_interface->sendRawCommand(QStringLiteral("01 42"));
-    QByteArray data = PidDecoder::extractDataBytes(resp, QStringLiteral("41"), QStringLiteral("42"));
-    if (data.size() >= 2) {
-        return PidDecoder::decodeControlModuleVoltage(static_cast<uint8_t>(data.at(0)), static_cast<uint8_t>(data.at(1)));
+            if (val.has_value()) {
+                return val;
+            }
+        }
     }
-    return 0.0;
+
+    return std::nullopt;
 }
 
 double ObdProtocol::readBatteryVoltage()
@@ -119,6 +101,7 @@ double ObdProtocol::readBatteryVoltage()
 QList<DtcInfo> ObdProtocol::readStoredDtcs()
 {
     if (!m_interface || !m_dtcManager) return {};
+    setFunctionalAddressing();
     QString resp = m_interface->sendRawCommand(QStringLiteral("03"));
     return m_dtcManager->parseDtcResponse(resp);
 }
@@ -126,14 +109,14 @@ QList<DtcInfo> ObdProtocol::readStoredDtcs()
 QList<DtcInfo> ObdProtocol::readPendingDtcs()
 {
     if (!m_interface || !m_dtcManager) return {};
+    setFunctionalAddressing();
     QString resp = m_interface->sendRawCommand(QStringLiteral("07"));
     return m_dtcManager->parseDtcResponse(resp);
 }
 
 bool ObdProtocol::clearDtcs(bool userConfirmed)
 {
-    if (!userConfirmed) return false;
-    if (!m_interface) return false;
+    if (!userConfirmed || !m_interface) return false;
 
     SafetyGuard::setUserConfirmedClearDtc(true);
     QString resp = m_interface->sendRawCommand(QStringLiteral("04"));
@@ -145,6 +128,7 @@ bool ObdProtocol::clearDtcs(bool userConfirmed)
 QString ObdProtocol::readVin()
 {
     if (!m_interface) return QString();
+    setFunctionalAddressing();
     QString resp = m_interface->sendRawCommand(QStringLiteral("09 02"));
     QByteArray payload = reassembleIsoTpPayload(resp);
 
@@ -157,12 +141,31 @@ QString ObdProtocol::readVin()
         }
     }
 
-    // Si los datos vinieron directamente en ASCII
     if (payload.size() >= 17) {
         return QString::fromLatin1(payload.left(17)).trimmed();
     }
 
     return QString();
+}
+
+bool ObdProtocol::setFunctionalAddressing()
+{
+    if (!m_interface) return false;
+    m_interface->sendRawCommand(QStringLiteral("AT SH 7DF"));
+    m_interface->sendRawCommand(QStringLiteral("AT CRA"));
+    return true;
+}
+
+bool ObdProtocol::setAddressing(const QString& header, const QString& cra)
+{
+    if (!m_interface || header.isEmpty()) return false;
+    m_interface->sendRawCommand(QStringLiteral("AT SH ") + header.trimmed().toUpper());
+    if (!cra.isEmpty()) {
+        m_interface->sendRawCommand(QStringLiteral("AT CRA ") + cra.trimmed().toUpper());
+    } else {
+        m_interface->sendRawCommand(QStringLiteral("AT CRA"));
+    }
+    return true;
 }
 
 QByteArray ObdProtocol::reassembleIsoTpPayload(const QString& rawResponse)
@@ -178,7 +181,7 @@ QByteArray ObdProtocol::reassembleIsoTpPayload(const QString& rawResponse)
         QStringList tokens = cleanLine.split(QLatin1Char(' '), Qt::SkipEmptyParts);
         if (tokens.isEmpty()) continue;
 
-        // Si la línea incluye header CAN (ej. 7E8), omitir el primer token
+        // Si la línea incluye header CAN (ej. 7E8 o 18DAF110), omitir el primer token
         int tokenOffset = 0;
         if (tokens.first().length() == 3 || tokens.first().length() == 8) {
             tokenOffset = 1;
@@ -228,4 +231,3 @@ QByteArray ObdProtocol::reassembleIsoTpPayload(const QString& rawResponse)
 
     return fullPayload;
 }
-

@@ -1,5 +1,5 @@
 if(EXISTS "/tmp/qt6_deps/usr/lib")
-    link_directories("/tmp/qt6_deps/usr/lib")
+    link_directories("/tmp/qt6_deps/usr/lib" "/tmp/qt6_deps/usr/lib/x86_64-linux-gnu")
 endif()
 
 add_executable(tst_obd_simulator
@@ -13,6 +13,12 @@ add_executable(tst_obd_simulator
     ../src/hal/SocketCanDriver.cpp
     ../src/core/SafetyGuard.h
     ../src/core/SafetyGuard.cpp
+    ../src/core/SignalExtractor.h
+    ../src/core/SignalExtractor.cpp
+    ../src/core/ObdbJsonLoader.h
+    ../src/core/ObdbJsonLoader.cpp
+    ../src/core/DbcParser.h
+    ../src/core/DbcParser.cpp
     ../src/core/PidDecoder.h
     ../src/core/PidDecoder.cpp
     ../src/core/DtcManager.h
@@ -38,3 +44,6 @@ target_link_libraries(tst_obd_simulator PRIVATE
 )
 
 add_test(NAME tst_obd_simulator COMMAND tst_obd_simulator)
+set_tests_properties(tst_obd_simulator PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+)

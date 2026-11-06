@@ -78,7 +78,6 @@ void DtcManager::ensureDefaultSchema()
         ");"
     ));
 
-    // Verificar si existen los códigos requeridos, si no, insertarlos
     query.exec(QStringLiteral("SELECT count(*) FROM dtc_codes;"));
     int count = 0;
     if (query.next()) {
@@ -107,16 +106,8 @@ QString DtcManager::decodeDtcPair(uint8_t byteA, uint8_t byteB)
         return QString(); // Ignorar relleno de trama 00 00
     }
 
-    // Casos especiales de UDS directo o literales de transceptores
-    if (byteA == 0xC0 && byteB == 0x35) {
-        return QStringLiteral("C0035");
-    }
-    if (byteA == 0xC0 && byteB == 0x20) {
-        return QStringLiteral("C0200");
-    }
-
-    // Algoritmo SAE J2012 / ISO 15031-6:
-    // Bits 7-6: Prefijo (00->P, 01->C, 10->B, 11->U)
+    // Algoritmo matemático estricto SAE J2012 / ISO 15031-6:
+    // Bits 7-6 de byteA: Prefijo (00 -> P, 01 -> C, 10 -> B, 11 -> U)
     char prefix = 'P';
     uint8_t category = (byteA >> 6) & 0x03;
     switch (category) {
@@ -126,10 +117,10 @@ QString DtcManager::decodeDtcPair(uint8_t byteA, uint8_t byteB)
         case 3: prefix = 'U'; break;
     }
 
-    // Bits 5-4: Segundo dígito (0 a 3)
+    // Bits 5-4 de byteA: Segundo dígito (0 a 3)
     uint8_t digit2 = (byteA >> 4) & 0x03;
 
-    // Bits 3-0: Tercer dígito en hexadecimal (0 a F)
+    // Bits 3-0 de byteA: Tercer dígito en hexadecimal (0 a F)
     uint8_t digit3 = byteA & 0x0F;
 
     // Bits 7-0 de byteB: Cuarto y quinto dígito en hexadecimal (00 a FF)
@@ -163,7 +154,7 @@ DtcInfo DtcManager::getDtcDetails(const QString& code)
         }
     }
 
-    // Descripción por defecto si no está en base de datos
+    // Descripción genérica por defecto según SAE J2012 si no está en BD
     if (info.code.startsWith(QLatin1Char('P'))) {
         info.system = QStringLiteral("Powertrain (Tren Motriz)");
     } else if (info.code.startsWith(QLatin1Char('C'))) {
@@ -191,10 +182,11 @@ QList<DtcInfo> DtcManager::parseDtcResponse(const QString& rawResponse)
 
         QStringList tokens = cleanLine.split(QLatin1Char(' '), Qt::SkipEmptyParts);
 
-        // 1. Parseo Modo 03 / 07 (SAE J1979)
-        // Ejemplo: 7E8 06 43 02 01 71 07 40
         for (int i = 0; i < tokens.size(); ++i) {
             QString tok = tokens.at(i).toUpper();
+
+            // 1. Parseo Modo 03 / 07 (SAE J1979)
+            // Ejemplo: 7E8 06 43 02 01 71 07 40
             if (tok == QStringLiteral("43") || tok == QStringLiteral("47")) {
                 int pairStart = i + 2; // Saltar byte de cantidad de códigos
                 for (int k = pairStart; k + 1 < tokens.size(); k += 2) {
@@ -211,37 +203,42 @@ QList<DtcInfo> DtcManager::parseDtcResponse(const QString& rawResponse)
                 }
             }
 
-            // 2. Parseo UDS 19 02 (ReadDTCInformation)
-            // Ejemplo: 7B8 06 59 02 FF C0 20 00 2F
-            // Ejemplo: 7EA 06 59 02 FF C0 03 50 2F
+            // 2. Parseo UDS 19 02 (ReadDTCInformationByStatusMask)
+            // Estándar ISO 14229: 59 02 <status_mask> [DTC_High DTC_Mid DTC_FailureType StatusOfDTC]...
+            // Ejemplo: 7B8 06 59 02 FF 42 00 00 2F (DTC C0200, FTB 00, Status 2F)
+            // Ejemplo: 7EA 06 59 02 FF 40 35 00 2F (DTC C0035, FTB 00, Status 2F)
             if (tok == QStringLiteral("59") && i + 2 < tokens.size() && tokens.at(i + 1).toUpper() == QStringLiteral("02")) {
-                int dtcStart = i + 3; // Saltar 59 02 FF
-                while (dtcStart + 2 < tokens.size()) {
-                    bool ok1 = false, ok2 = false, ok3 = false;
+                int dtcStart = i + 3; // Saltar 59 02 <status_mask>
+                while (dtcStart + 1 < tokens.size()) {
+                    bool ok1 = false, ok2 = false;
                     uint8_t b1 = static_cast<uint8_t>(tokens.at(dtcStart).toUInt(&ok1, 16));
                     uint8_t b2 = static_cast<uint8_t>(tokens.at(dtcStart + 1).toUInt(&ok2, 16));
-                    uint8_t b3 = static_cast<uint8_t>(tokens.at(dtcStart + 2).toUInt(&ok3, 16));
 
-                    if (ok1 && ok2 && ok3) {
-                        QString code;
-                        // Caso GM EBCM: C0 03 50 -> C0035
-                        if (b1 == 0xC0 && b2 == 0x03 && b3 == 0x50) {
-                            code = QStringLiteral("C0035");
-                        } else if (b1 == 0xC0 && b2 == 0x20) {
-                            // Caso Toyota ABS: C0 20 00 -> C0200
-                            code = QStringLiteral("C0200");
-                        } else {
-                            code = decodeDtcPair(b1, b2);
-                        }
-
+                    if (ok1 && ok2) {
+                        QString code = decodeDtcPair(b1, b2);
                         if (!code.isEmpty() && !parsedCodes.contains(code)) {
                             parsedCodes.append(code);
-                            resultList.append(getDtcDetails(code));
+                            DtcInfo info = getDtcDetails(code);
+
+                            // Extraer 3er byte (FTB) y 4to byte (Status) si están presentes
+                            if (dtcStart + 2 < tokens.size()) {
+                                info.faultType = tokens.at(dtcStart + 2).toUpper();
+                            }
+                            if (dtcStart + 3 < tokens.size()) {
+                                bool okStatus = false;
+                                info.statusByte = static_cast<uint8_t>(tokens.at(dtcStart + 3).toUInt(&okStatus, 16));
+                            }
+                            resultList.append(info);
                         }
                     }
 
-                    // Saltar 3 bytes de DTC + 1 byte de estado UDS
-                    dtcStart += 4;
+                    // Avanzar 4 bytes por registro DTC UDS (High, Mid, FTB, Status)
+                    // Si quedan menos de 4 tokens, avanzar 2 bytes
+                    if (dtcStart + 3 < tokens.size()) {
+                        dtcStart += 4;
+                    } else {
+                        dtcStart += 2;
+                    }
                 }
             }
         }
@@ -249,4 +246,3 @@ QList<DtcInfo> DtcManager::parseDtcResponse(const QString& rawResponse)
 
     return resultList;
 }
-

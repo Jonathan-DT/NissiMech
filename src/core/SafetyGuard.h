@@ -1,19 +1,37 @@
 #pragma once
 
 #include <QString>
+#include <QSet>
 #include <atomic>
+#include <mutex>
 
 /**
  * @brief Cortafuegos de seguridad de nivel automotriz para comandos OBD2 y UDS.
  * 
- * Implementa una lista blanca estricta y lista negra absoluta de comandos hacia la ECU,
- * impidiendo modificaciones accidentales en la memoria flash/EEPROM, bloqueos de bus o
- * borrado no supervisado de códigos DTC.
+ * Implementa una lista blanca dinámica vinculada a los archivos OBDb y DBC cargados,
+ * además de una lista negra absoluta de comandos peligrosos hacia la ECU.
  */
 class SafetyGuard
 {
 public:
     SafetyGuard() = delete;
+
+    /**
+     * @brief Configura el contexto de comandos, cabeceras y filtros autorizados para el vehículo activo.
+     */
+    static void setAuthorizedContext(const QSet<QString>& allowedCommands,
+                                     const QSet<QString>& allowedHeaders,
+                                     const QSet<QString>& allowedCraFilters);
+
+    /**
+     * @brief Limpia el contexto activo. En este estado solo se permiten comandos AT básicos de configuración.
+     */
+    static void clearAuthorizedContext();
+
+    /**
+     * @brief Indica si existe un perfil vehicular cargado en el cortafuegos.
+     */
+    static bool hasActiveVehicleContext();
 
     /**
      * @brief Evalúa si un comando crudo es seguro para ser transmitido al vehículo.
@@ -36,5 +54,9 @@ public:
 
 private:
     static inline std::atomic<bool> s_userConfirmedClearDtc{false};
+    static inline std::atomic<bool> s_hasActiveContext{false};
+    static inline std::mutex s_mutex;
+    static inline QSet<QString> s_allowedCommands;
+    static inline QSet<QString> s_allowedHeaders;
+    static inline QSet<QString> s_allowedCraFilters;
 };
-

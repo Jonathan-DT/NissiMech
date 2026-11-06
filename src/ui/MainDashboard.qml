@@ -4,14 +4,15 @@ import QtQuick.Layouts
 
 /**
  * MainDashboard.qml
- * Tablero principal de diagnóstico automotriz profesional para OBD2_Scanner_Pro.
+ * Tablero principal de diagnóstico automotriz profesional para OBD2_Scanner_Pro (NissiMech).
+ * 100% Desacoplado: Poblado dinámicamente desde perfiles OBDb JSON y Vector DBC en opendbc/.
  */
 ApplicationWindow {
     id: appWindow
     visible: true
-    width: 1100
-    height: 750
-    title: "OBD2 Scanner Pro - Diagnóstico Automotriz Avanzado (SAE J1979 / ISO 14229)"
+    width: 1200
+    height: 800
+    title: "OBD2 Scanner Pro - Diagnóstico Automotriz Dinámico (OBDb / commaai opendbc)"
     color: "#0a0e14"
 
     // Barra de Navegación y Conexión Superior
@@ -27,7 +28,7 @@ ApplicationWindow {
             anchors.margins: 10
             spacing: 12
 
-            // Icono / Indicador de Estado
+            // Indicador de Estado
             Rectangle {
                 width: 14
                 height: 14
@@ -46,17 +47,32 @@ ApplicationWindow {
                 text: "OBD2 SCANNER PRO"
                 color: "#f8fafc"
                 font.bold: true
-                font.pixelSize: 16
+                font.pixelSize: 15
                 font.letterSpacing: 1.5
             }
 
-            Rectangle {
-                width: 1
-                height: 24
-                color: "#334155"
+            Rectangle { width: 1; height: 24; color: "#334155" }
+
+            // Selector de Perfil Vehicular Dinámico (opendbc/)
+            Text {
+                text: "Vehículo:"
+                color: "#94a3b8"
+                font.pixelSize: 13
             }
 
-            // Selector de Adaptador
+            ComboBox {
+                id: vehicleSelector
+                model: diagnosticController.availableVehicles
+                currentIndex: diagnosticController.selectedVehicleIndex
+                onActivated: function(index) {
+                    diagnosticController.selectedVehicleIndex = index;
+                }
+                Layout.preferredWidth: 200
+            }
+
+            Rectangle { width: 1; height: 24; color: "#334155" }
+
+            // Selector de Interfaz / Hardware
             Text {
                 text: "Interfaz:"
                 color: "#94a3b8"
@@ -70,15 +86,15 @@ ApplicationWindow {
                 onActivated: function(index) {
                     diagnosticController.selectedAdapterIndex = index;
                 }
-                Layout.preferredWidth: 260
+                Layout.preferredWidth: 220
             }
 
             TextField {
                 id: portField
                 placeholderText: "/dev/ttyUSB0 o can0"
                 text: "/dev/ttyUSB0"
-                visible: adapterSelector.currentIndex >= 2
-                Layout.preferredWidth: 140
+                visible: adapterSelector.currentIndex >= 1
+                Layout.preferredWidth: 130
             }
 
             Button {
@@ -106,12 +122,7 @@ ApplicationWindow {
                 RowLayout {
                     anchors.centerIn: parent
                     spacing: 6
-                    Text {
-                        text: "BAT:"
-                        color: "#94a3b8"
-                        font.bold: true
-                        font.pixelSize: 12
-                    }
+                    Text { text: "BAT:"; color: "#94a3b8"; font.bold: true; font.pixelSize: 12 }
                     Text {
                         text: diagnosticController.batteryVoltage.toFixed(1) + " V"
                         color: "#fbbf24"
@@ -129,23 +140,58 @@ ApplicationWindow {
         anchors.fill: parent
         spacing: 0
 
+        // Barra informativa de protocolo negociado (detectActiveProtocol)
+        Rectangle {
+            Layout.fillWidth: true
+            height: 36
+            color: "#0f172a"
+            border.color: "#1e293b"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 16
+
+                Text {
+                    text: "Protocolo Físico Activo:"
+                    color: "#94a3b8"
+                    font.bold: true
+                    font.pixelSize: 12
+                }
+
+                Text {
+                    text: diagnosticController.activeProtocol
+                    color: "#38bdf8"
+                    font.bold: true
+                    font.pixelSize: 13
+                    font.family: "Monospace"
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Text {
+                    text: "Perfil Cargado: " + diagnosticController.activeVehicleName
+                    color: "#a855f7"
+                    font.pixelSize: 12
+                }
+
+                Button {
+                    text: "Detectar Protocolo (AT SP 0)"
+                    enabled: diagnosticController.connected
+                    onClicked: diagnosticController.detectVehicleProtocol()
+                }
+            }
+        }
+
         TabBar {
             id: mainTabBar
             Layout.fillWidth: true
             background: Rectangle { color: "#0d131d" }
 
-            TabButton {
-                text: "Medidores en Vivo"
-                width: implicitWidth + 20
-            }
-            TabButton {
-                text: "Osciloscopio / Gráficas"
-                width: implicitWidth + 20
-            }
-            TabButton {
-                text: "Códigos de Falla (DTC)"
-                width: implicitWidth + 20
-            }
+            TabButton { text: "Medidores en Vivo"; width: implicitWidth + 24 }
+            TabButton { text: "Osciloscopio / Gráficas"; width: implicitWidth + 24 }
+            TabButton { text: "Códigos de Falla (DTC)"; width: implicitWidth + 24 }
         }
 
         StackLayout {
@@ -348,7 +394,7 @@ ApplicationWindow {
                             }
                         }
 
-                        // Medidor Secundario: Posición Mariposa (TPS)
+                        // Medidor Secundario: Posición Mariposa (TPS) / Carga
                         Rectangle {
                             Layout.fillWidth: true
                             height: 120
@@ -359,7 +405,7 @@ ApplicationWindow {
                             ColumnLayout {
                                 anchors.centerIn: parent
                                 spacing: 4
-                                Text { text: "POSICIÓN ACELERADOR (TPS)"; color: "#94a3b8"; font.pixelSize: 11; font.bold: true; Layout.alignment: Qt.AlignHCenter }
+                                Text { text: "POSICIÓN ACELERADOR / CARGA"; color: "#94a3b8"; font.pixelSize: 11; font.bold: true; Layout.alignment: Qt.AlignHCenter }
                                 Text { text: diagnosticController.throttle.toFixed(1) + " %"; color: "#38bdf8"; font.pixelSize: 24; font.bold: true; Layout.alignment: Qt.AlignHCenter }
                             }
                         }
@@ -396,12 +442,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         spacing: 10
 
-                        Text {
-                            text: "Canal a Graficar:"
-                            color: "#94a3b8"
-                            font.bold: true
-                            font.pixelSize: 13
-                        }
+                        Text { text: "Canal a Graficar:"; color: "#94a3b8"; font.bold: true; font.pixelSize: 13 }
 
                         Button {
                             text: "RPM Motor"
@@ -480,27 +521,31 @@ ApplicationWindow {
                     anchors.margins: 16
                     spacing: 12
 
-                    // Botonera de Consulta de Módulos
+                    // Botonera de Consulta Dinámica
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 10
 
                         Button {
-                            text: "Leer Fallas Motor / Trans (Modo 03)"
+                            text: "Escanear Fallas Almacenadas (Modo 03)"
                             enabled: diagnosticController.connected
                             onClicked: diagnosticController.readStoredDtcs()
                         }
 
                         Button {
-                            text: "Fallas ABS Toyota (Header 7B0)"
+                            text: "Escanear Fallas Pendientes (Modo 07)"
                             enabled: diagnosticController.connected
-                            onClicked: diagnosticController.readAbsToyotaDtcs()
+                            onClicked: diagnosticController.readPendingDtcs()
                         }
 
-                        Button {
-                            text: "Fallas ABS Chevrolet Beat (Header 7E2)"
-                            enabled: diagnosticController.connected
-                            onClicked: diagnosticController.readAbsBeatDtcs()
+                        // Módulos detectados dinámicamente en el JSON de OBDb
+                        Repeater {
+                            model: diagnosticController.availableModules
+                            delegate: Button {
+                                text: "Fallas " + modelData.type.toUpperCase() + " (" + modelData.header + ")"
+                                enabled: diagnosticController.connected
+                                onClicked: diagnosticController.scanModuleDtcs(modelData.header)
+                            }
                         }
 
                         Item { Layout.fillWidth: true }
@@ -508,10 +553,7 @@ ApplicationWindow {
                         Button {
                             text: "Borrar Códigos (Clear DTCs)"
                             enabled: diagnosticController.connected
-                            background: Rectangle {
-                                color: "#b91c1c"
-                                radius: 4
-                            }
+                            background: Rectangle { color: "#b91c1c"; radius: 4 }
                             contentItem: Text {
                                 text: parent.text
                                 color: "#ffffff"
@@ -564,11 +606,21 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     spacing: 2
 
-                                    Text {
-                                        text: modelData.system
-                                        color: "#94a3b8"
-                                        font.bold: true
-                                        font.pixelSize: 12
+                                    RowLayout {
+                                        spacing: 8
+                                        Text {
+                                            text: modelData.system
+                                            color: "#94a3b8"
+                                            font.bold: true
+                                            font.pixelSize: 12
+                                        }
+                                        Text {
+                                            visible: modelData.faultType && modelData.faultType.length > 0
+                                            text: "Subtipo: 0x" + modelData.faultType
+                                            color: "#a855f7"
+                                            font.pixelSize: 11
+                                            font.family: "Monospace"
+                                        }
                                     }
 
                                     Text {
@@ -595,7 +647,6 @@ ApplicationWindow {
                             }
                         }
 
-                        // Indicador de lista vacía
                         Text {
                             anchors.centerIn: parent
                             visible: dtcListView.count === 0
@@ -646,4 +697,3 @@ ApplicationWindow {
         }
     }
 }
-

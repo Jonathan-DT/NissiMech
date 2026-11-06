@@ -1,0 +1,43 @@
+{
+  "scenario_name": "Toyota Camry 2006 Test Scenario",
+  "vehicle_folder": "Toyota-Camry",
+  "responses": [
+    { "header": "*", "command": "AT Z", "response": "ELM327 v1.4b (Mock Vgate vLinker FS)\r\r>" },
+    { "header": "*", "command": "ATZ", "response": "ELM327 v1.4b (Mock Vgate vLinker FS)\r\r>" },
+    { "header": "*", "command": "AT L0", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT S1", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT H1", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT H0", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT E0", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT E1", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT CAF1", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT CFC1", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT CSM1", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT AT1", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT SP 0", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT SP0", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT DP", "response": "AUTO, ISO 15765-4 (CAN 11/500)\r\r>" },
+    { "header": "*", "command": "AT DPN", "response": "6\r\r>" },
+    { "header": "*", "command": "AT RV", "response": "12.6V\r\r>" },
+
+    { "header": "*", "command": "01 00", "response": "7E8 06 41 00 BE 3F B8 13 \r\r>" },
+    { "header": "*", "command": "01 0C", "response": "7E8 04 41 0C 0B B8 \r\r>" },
+    { "header": "*", "command": "01 05", "response": "7E8 03 41 05 82 \r\r>" },
+    { "header": "*", "command": "01 0D", "response": "7E8 03 41 0D 00 \r\r>" },
+    { "header": "*", "command": "01 0F", "response": "7E8 03 41 0F 46 \r\r>" },
+    { "header": "*", "command": "01 10", "response": "7E8 04 41 10 01 54 \r\r>" },
+    { "header": "*", "command": "01 11", "response": "7E8 03 41 11 26 \r\r>" },
+    { "header": "*", "command": "01 42", "response": "7E8 04 41 42 34 56 \r\r>" },
+
+    { "header": "7E0", "command": "21 01", "response": "7E8 10 10 61 01 50 20 00 01 54 \r7E8 21 64 46 64 82 0B B8 00 \r\r>" },
+    { "header": "*", "command": "21 01", "response": "7E8 10 10 61 01 50 20 00 01 54 \r7E8 21 64 46 64 82 0B B8 00 \r\r>" },
+
+    { "header": "*", "command": "03", "response": "7E8 06 43 02 01 71 07 40 \r\r>" },
+    { "header": "*", "command": "07", "response": "7E8 04 47 01 03 00 \r\r>" },
+    { "header": "*", "command": "04", "response": "7E8 01 44 \r\r>" },
+    { "header": "*", "command": "09 02", "response": "7E8 10 14 49 02 01 34 54 31 \r7E8 21 42 45 33 32 4B 30 36 \r7E8 22 55 31 32 33 34 35 36 \r\r>" },
+
+    { "header": "7B0", "command": "19 02 FF", "response": "7B8 06 59 02 FF 42 00 00 2F \r\r>" }
+  ]
+}
+

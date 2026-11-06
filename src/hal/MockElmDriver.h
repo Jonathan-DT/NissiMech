@@ -1,22 +1,19 @@
 #pragma once
 
 #include "IObdInterface.h"
+#include <QMap>
+#include <QPair>
 
 /**
- * @brief Simulador en memoria de adaptador ELM327 / STN y ECU vehicular.
- * Permite ejecutar pruebas completas y desarrollo de UI sin requerir hardware físico.
+ * @brief Simulador dinámico en memoria de adaptador ELM327 / STN y ECUs vehiculares.
+ * Carga respuestas estrictamente desde archivos de escenarios JSON (database/scenarios/escenario.json),
+ * devolviendo "NO DATA\r\r>" ante cualquier comando no documentado.
  */
 class MockElmDriver : public IObdInterface
 {
     Q_OBJECT
 
 public:
-    enum class VehicleProfile {
-        ToyotaCamry2006,
-        ChevroletBeat2018
-    };
-    Q_ENUM(VehicleProfile)
-
     explicit MockElmDriver(QObject* parent = nullptr);
     ~MockElmDriver() override = default;
 
@@ -25,21 +22,33 @@ public:
     bool isConnected() const override;
     QString sendRawCommand(const QString& cmd, int timeoutMs = 2000) override;
 
-    void setVehicleProfile(VehicleProfile profile);
-    VehicleProfile vehicleProfile() const;
+    /**
+     * @brief Carga un archivo de escenario JSON dinámico para la simulación.
+     */
+    bool loadScenario(const QString& scenarioPath);
+
+    QString scenarioName() const { return m_scenarioName; }
+    QString vehicleFolder() const { return m_vehicleFolder; }
 
     void setCurrentHeader(const QString& header);
-    QString currentHeader() const;
+    QString currentHeader() const { return m_currentHeader; }
+
+    void setCurrentCra(const QString& cra);
+    QString currentCra() const { return m_currentCra; }
 
 private:
-    QString processToyotaCommand(const QString& cmd);
-    QString processBeatCommand(const QString& cmd);
+    QString lookupResponse(const QString& cmd);
 
     bool m_connected{false};
-    VehicleProfile m_profile{VehicleProfile::ToyotaCamry2006};
+    QString m_scenarioName;
+    QString m_vehicleFolder;
     QString m_currentHeader{QStringLiteral("7DF")};
     QString m_currentCra;
     bool m_headersEnabled{true};
     bool m_echoEnabled{false};
-};
 
+    // Mapeo: Pair<Header, NormalizedCommand> -> ResponseString
+    QMap<QPair<QString, QString>, QString> m_scenarioResponses;
+    // Respuestas independientes de cabecera (header "*")
+    QMap<QString, QString> m_wildcardResponses;
+};

@@ -1,0 +1,45 @@
+{
+  "scenario_name": "Chevrolet Beat 2018 Test Scenario",
+  "vehicle_folder": "Chevrolet-Beat",
+  "responses": [
+    { "header": "*", "command": "AT Z", "response": "ELM327 v2.2 (Mock STN2120 / vLinker)\r\r>" },
+    { "header": "*", "command": "ATZ", "response": "ELM327 v2.2 (Mock STN2120 / vLinker)\r\r>" },
+    { "header": "*", "command": "AT L0", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT S1", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT H1", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT H0", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT E0", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT E1", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT CAF1", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT CFC1", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT CSM1", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT AT1", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT SP 0", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT SP0", "response": "OK\r\r>" },
+    { "header": "*", "command": "AT DP", "response": "AUTO, ISO 15765-4 (CAN 11/500)\r\r>" },
+    { "header": "*", "command": "AT DPN", "response": "6\r\r>" },
+    { "header": "*", "command": "AT RV", "response": "14.1V\r\r>" },
+
+    { "header": "*", "command": "01 00", "response": "7E8 06 41 00 BE 3E B8 11 \r\r>" },
+    { "header": "*", "command": "01 0C", "response": "7E8 04 41 0C 0C 80 \r\r>" },
+    { "header": "*", "command": "01 05", "response": "7E8 03 41 05 87 \r\r>" },
+    { "header": "*", "command": "01 0D", "response": "7E8 03 41 0D 00 \r\r>" },
+    { "header": "*", "command": "01 0F", "response": "7E8 03 41 0F 41 \r\r>" },
+    { "header": "*", "command": "01 10", "response": "7E8 04 41 10 00 F0 \r\r>" },
+    { "header": "*", "command": "01 11", "response": "7E8 03 41 11 20 \r\r>" },
+    { "header": "*", "command": "01 42", "response": "7E8 04 41 42 36 B0 \r\r>" },
+
+    { "header": "7E0", "command": "22 00 0D", "response": "7E8 04 62 00 0D 00 \r\r>" },
+    { "header": "*", "command": "22 00 0D", "response": "7E8 04 62 00 0D 00 \r\r>" },
+    { "header": "7E0", "command": "22 00 42", "response": "7E8 05 62 00 42 36 B0 \r\r>" },
+    { "header": "*", "command": "22 00 42", "response": "7E8 05 62 00 42 36 B0 \r\r>" },
+
+    { "header": "*", "command": "03", "response": "7E8 04 43 01 01 71 \r\r>" },
+    { "header": "*", "command": "07", "response": "7E8 02 47 00 \r\r>" },
+    { "header": "*", "command": "04", "response": "7E8 01 44 \r\r>" },
+    { "header": "*", "command": "09 02", "response": "7E8 10 14 49 02 01 4D 41 36 \r7E8 21 43 42 36 43 44 39 4A \r7E8 22 54 30 30 30 30 30 31 \r\r>" },
+
+    { "header": "7E2", "command": "19 02 FF", "response": "7EA 06 59 02 FF 40 35 00 2F \r\r>" }
+  ]
+}
+

@@ -4,73 +4,64 @@
 #include <QString>
 #include <QByteArray>
 #include <QList>
+#include <optional>
 #include <cstdint>
 #include "../hal/IObdInterface.h"
 #include "DtcManager.h"
-
-/**
- * @brief Módulos electrónicos destino para diagnóstico avanzado UDS (ISO 14229)
- * y direccionamiento físico específico de fabricante.
- */
-enum class TargetModule {
-    Engine_ECM,
-    Transmission_TCM,
-    Brakes_ABS_ISO,        // Chevrolet Beat / Spark GM EBCM (Tx: 7E2, Rx: 7EA)
-    Brakes_ABS_Toyota,     // Toyota Camry / Corolla ABS (Tx: 7B0, Rx: 7B8)
-    Brakes_ABS_Ford_MSCAN  // Ford MS-CAN ABS (Tx: 760, Rx: 768)
-};
+#include "ObdbJsonLoader.h"
+#include "DbcParser.h"
 
 /**
  * @brief Controlador para servicios extendidos de diagnóstico vehicular UDS (ISO 14229 / ISO 15765).
  * 
- * Gestiona el enrutamiento físico a ECUs individuales (ECM, TCM, ABS), lectura de DIDs,
- * lectura de códigos de falla específicos con status mask (Servicio 0x19) y control de flujo.
+ * Gestiona el enrutamiento dinámico a ECUs individuales (ECM, TCM, ABS, etc.) basado
+ * estrictamente en las cabeceras y señales de los archivos cargados (sin suposiciones hardcodeadas).
  */
 class UdsProtocol : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit UdsProtocol(IObdInterface* interface, DtcManager* dtcManager, QObject* parent = nullptr);
+    explicit UdsProtocol(IObdInterface* interface,
+                         DtcManager* dtcManager,
+                         ObdbJsonLoader* obdbLoader = nullptr,
+                         DbcParser* dbcParser = nullptr,
+                         QObject* parent = nullptr);
     ~UdsProtocol() override = default;
 
-    /**
-     * @brief Configura el direccionamiento físico del adaptador hacia una ECU específica.
-     */
-    bool selectModule(TargetModule module);
+    void setObdbLoader(ObdbJsonLoader* loader) { m_obdbLoader = loader; }
+    void setDbcParser(DbcParser* parser) { m_dbcParser = parser; }
 
     /**
-     * @brief Restaura el direccionamiento funcional estándar (Broadcast 7DF con filtro abierto).
+     * @brief Configura el direccionamiento físico hacia una ECU por sus identificadores CAN.
+     */
+    bool selectPhysicalModule(const QString& txHeader, const QString& rxCra = QString());
+
+    /**
+     * @brief Restaura el direccionamiento funcional estándar (Broadcast 7DF).
      */
     bool restoreFunctionalAddressing();
 
     /**
      * @brief Lee los códigos DTC de un módulo específico mediante UDS Servicio 0x19 0x02.
-     * @param module Módulo vehicular a consultar.
-     * @return Lista de fallas detectadas y enriquecidas con la base de datos clínica.
+     * @param txHeader Cabecera de transmisión (ej. "7E0", "7E1", "7E2", etc.).
+     * @param rxCra Filtro de recepción esperado (ej. "7E8", "7E9", "7EA", etc.).
      */
-    QList<DtcInfo> readModuleDtcs(TargetModule module);
+    QList<DtcInfo> readModuleDtcs(const QString& txHeader, const QString& rxCra = QString());
 
     /**
-     * @brief Lee un parámetro mediante UDS ReadDataByIdentifier (Servicio 0x22) o 0x21 (Toyota).
-     * @param module Módulo objetivo.
-     * @param did Identificador de datos (Data Identifier DID).
-     * @return Arreglo de bytes con los datos recibidos de la ECU.
+     * @brief Lee un parámetro mediante UDS ReadDataByIdentifier (Servicio 0x22).
      */
-    QByteArray readDataByIdentifier(TargetModule module, uint16_t did);
+    QByteArray readDataByIdentifier(const QString& txHeader, uint16_t did, const QString& rxCra = QString());
 
     /**
-     * @brief Lee la temperatura del fluido de la transmisión (TCM) en vehículos Toyota.
+     * @brief Consulta el valor físico de una señal específica registrada en el archivo OBDb del vehículo.
      */
-    double readToyotaTransmissionFluidTemp();
-
-    /**
-     * @brief Lee la velocidad del sensor de rueda ABS.
-     */
-    double readAbsWheelSpeed(TargetModule module);
+    std::optional<double> querySignal(const QString& signalId);
 
 private:
     IObdInterface* m_interface{nullptr};
     DtcManager* m_dtcManager{nullptr};
+    ObdbJsonLoader* m_obdbLoader{nullptr};
+    DbcParser* m_dbcParser{nullptr};
 };
-
