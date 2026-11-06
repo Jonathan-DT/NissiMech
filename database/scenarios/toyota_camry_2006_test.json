@@ -29,15 +29,19 @@
     { "header": "*", "command": "01 11", "response": "7E8 03 41 11 26 \r\r>" },
     { "header": "*", "command": "01 42", "response": "7E8 04 41 42 34 56 \r\r>" },
 
-    { "header": "7E0", "command": "21 01", "response": "7E8 10 10 61 01 50 20 00 01 54 \r7E8 21 64 46 64 82 0B B8 00 \r\r>" },
-    { "header": "*", "command": "21 01", "response": "7E8 10 10 61 01 50 20 00 01 54 \r7E8 21 64 46 64 82 0B B8 00 \r\r>" },
+    { "header": "7E0", "command": "21 01", "response": "7E8 10 1D 61 01 50 20 00 01 54 \r7E8 21 64 46 64 82 0B B8 00 \r7E8 22 00 00 00 00 00 00 00 \r7E8 23 00 00 00 00 00 00 35 \r7E8 24 E8 00 00 00 00 00 00 \r\r>" },
+    { "header": "*", "command": "21 01", "response": "7E8 10 1D 61 01 50 20 00 01 54 \r7E8 21 64 46 64 82 0B B8 00 \r7E8 22 00 00 00 00 00 00 00 \r7E8 23 00 00 00 00 00 00 35 \r7E8 24 E8 00 00 00 00 00 00 \r\r>" },
+
+    { "header": "7E0", "command": "21 82", "response": "7E8 05 61 82 6E 00 00 \r\r>" },
+    { "header": "*", "command": "21 82", "response": "7E8 05 61 82 6E 00 00 \r\r>" },
 
     { "header": "*", "command": "03", "response": "7E8 06 43 02 01 71 07 40 \r\r>" },
     { "header": "*", "command": "07", "response": "7E8 04 47 01 03 00 \r\r>" },
     { "header": "*", "command": "04", "response": "7E8 01 44 \r\r>" },
     { "header": "*", "command": "09 02", "response": "7E8 10 14 49 02 01 34 54 31 \r7E8 21 42 45 33 32 4B 30 36 \r7E8 22 55 31 32 33 34 35 36 \r\r>" },
 
+    { "header": "7B0", "command": "21 03", "response": "7B8 06 61 03 32 32 32 32 \r\r>" },
+    { "header": "*", "command": "21 03", "response": "7B8 06 61 03 32 32 32 32 \r\r>" },
     { "header": "7B0", "command": "19 02 FF", "response": "7B8 06 59 02 FF 42 00 00 2F \r\r>" }
   ]
 }
-

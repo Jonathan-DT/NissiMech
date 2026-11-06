@@ -40,14 +40,26 @@ public:
     ObdbJsonLoader() = default;
 
     /**
-     * @brief Carga y parsea un archivo de señales OBDb JSON v3.
+     * @brief Carga y parsea un archivo de señales OBDb JSON v3 limpiando definiciones previas.
+     * @param filePath Ruta al archivo JSON.
+     * @param modelYear Año modelo opcional para filtrar comandos según el objeto "filter".
      */
-    bool loadFile(const QString& filePath);
+    bool loadFile(const QString& filePath, std::optional<int> modelYear = std::nullopt);
+
+    /**
+     * @brief Agrega comandos, ECUs y señales desde un archivo OBDb JSON v3 sin limpiar las previas.
+     * @param filePath Ruta al archivo JSON.
+     * @param modelYear Año modelo opcional para filtrar comandos según el objeto "filter".
+     */
+    bool appendFile(const QString& filePath, std::optional<int> modelYear = std::nullopt);
 
     /**
      * @brief Carga y parsea contenido JSON en memoria.
+     * @param jsonData Contenido JSON.
+     * @param modelYear Año modelo opcional para filtrar comandos según el objeto "filter".
+     * @param clearExisting Si es true, limpia las definiciones existentes antes de cargar.
      */
-    bool loadJson(const QByteArray& jsonData);
+    bool loadJson(const QByteArray& jsonData, std::optional<int> modelYear = std::nullopt, bool clearExisting = true);
 
     /**
      * @brief Limpia todas las definiciones cargadas.

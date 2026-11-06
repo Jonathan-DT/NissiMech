@@ -128,7 +128,7 @@ ApplicationWindow {
                         color: "#fbbf24"
                         font.bold: true
                         font.pixelSize: 14
-                        font.family: "Monospace"
+                        font.family: "monospace"
                     }
                 }
             }
@@ -165,7 +165,7 @@ ApplicationWindow {
                     color: "#38bdf8"
                     font.bold: true
                     font.pixelSize: 13
-                    font.family: "Monospace"
+                    font.family: "monospace"
                 }
 
                 Item { Layout.fillWidth: true }
@@ -236,7 +236,7 @@ ApplicationWindow {
                                 color: "#38bdf8"
                                 font.bold: true
                                 font.pixelSize: 14
-                                font.family: "Monospace"
+                                font.family: "monospace"
                             }
                             Item { Layout.fillWidth: true }
                             Button {
@@ -279,7 +279,7 @@ ApplicationWindow {
                                     color: "#00e5ff"
                                     font.bold: true
                                     font.pixelSize: 42
-                                    font.family: "Monospace"
+                                    font.family: "monospace"
                                     Layout.alignment: Qt.AlignHCenter
                                 }
 
@@ -322,7 +322,7 @@ ApplicationWindow {
                                     color: "#00e676"
                                     font.bold: true
                                     font.pixelSize: 42
-                                    font.family: "Monospace"
+                                    font.family: "monospace"
                                     Layout.alignment: Qt.AlignHCenter
                                 }
 
@@ -365,7 +365,7 @@ ApplicationWindow {
                                     color: diagnosticController.coolantTemp > 105 ? "#ff1744" : "#ff9100"
                                     font.bold: true
                                     font.pixelSize: 36
-                                    font.family: "Monospace"
+                                    font.family: "monospace"
                                     Layout.alignment: Qt.AlignHCenter
                                 }
 
@@ -598,7 +598,7 @@ ApplicationWindow {
                                         color: "#f8fafc"
                                         font.bold: true
                                         font.pixelSize: 16
-                                        font.family: "Monospace"
+                                        font.family: "monospace"
                                     }
                                 }
 
@@ -619,7 +619,7 @@ ApplicationWindow {
                                             text: "Subtipo: 0x" + modelData.faultType
                                             color: "#a855f7"
                                             font.pixelSize: 11
-                                            font.family: "Monospace"
+                                            font.family: "monospace"
                                         }
                                     }
 

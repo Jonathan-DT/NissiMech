@@ -189,13 +189,42 @@ QByteArray ObdProtocol::reassembleIsoTpPayload(const QString& rawResponse)
 
         if (tokenOffset >= tokens.size()) continue;
 
+        // Caso A: Línea de longitud hexadecimal de 3 dígitos propia de ELM327 CAF1 (ej. "014" o "7E8 014")
+        if (tokens.size() - tokenOffset == 1 && tokens.at(tokenOffset).length() == 3) {
+            bool okLen = false;
+            int len = tokens.at(tokenOffset).toInt(&okLen, 16);
+            if (okLen) {
+                expectedLength = len;
+                continue;
+            }
+        }
+
+        // Caso B: Líneas segmentadas numeradas de ELM327 CAF1 (ej. "0: 49 02 ...", "1: ...")
+        QString firstTok = tokens.at(tokenOffset);
+        if (firstTok.endsWith(QLatin1Char(':'))) {
+            for (int k = tokenOffset + 1; k < tokens.size(); ++k) {
+                bool ok = false;
+                uint8_t val = static_cast<uint8_t>(tokens.at(k).toUInt(&ok, 16));
+                if (ok) fullPayload.append(static_cast<char>(val));
+            }
+            continue;
+        }
+        if (firstTok.length() == 1 && tokenOffset + 1 < tokens.size() && tokens.at(tokenOffset + 1) == QStringLiteral(":")) {
+            for (int k = tokenOffset + 2; k < tokens.size(); ++k) {
+                bool ok = false;
+                uint8_t val = static_cast<uint8_t>(tokens.at(k).toUInt(&ok, 16));
+                if (ok) fullPayload.append(static_cast<char>(val));
+            }
+            continue;
+        }
+
         bool okPci = false;
         uint8_t pciByte = static_cast<uint8_t>(tokens.at(tokenOffset).toUInt(&okPci, 16));
         if (!okPci) continue;
 
         uint8_t frameType = (pciByte >> 4) & 0x0F;
 
-        // Single Frame (0x0N)
+        // Single Frame ISO-TP (0x0N)
         if (frameType == 0) {
             int length = pciByte & 0x0F;
             for (int k = tokenOffset + 1; k < tokens.size() && (k - (tokenOffset + 1)) < length; ++k) {
@@ -205,7 +234,7 @@ QByteArray ObdProtocol::reassembleIsoTpPayload(const QString& rawResponse)
             }
             break;
         }
-        // First Frame (0x1N)
+        // First Frame ISO-TP (0x1N)
         else if (frameType == 1) {
             if (tokenOffset + 1 < tokens.size()) {
                 bool okLen = false;
@@ -218,7 +247,7 @@ QByteArray ObdProtocol::reassembleIsoTpPayload(const QString& rawResponse)
                 }
             }
         }
-        // Consecutive Frame (0x2N)
+        // Consecutive Frame ISO-TP (0x2N)
         else if (frameType == 2) {
             for (int k = tokenOffset + 1; k < tokens.size(); ++k) {
                 if (expectedLength > 0 && fullPayload.size() >= expectedLength) break;
@@ -227,6 +256,19 @@ QByteArray ObdProtocol::reassembleIsoTpPayload(const QString& rawResponse)
                 if (ok) fullPayload.append(static_cast<char>(val));
             }
         }
+        // Caso C: Trama sin byte PCI (pciByte es directamente un Service ID de respuesta positiva >= 0x40)
+        else if (pciByte >= 0x40 && pciByte <= 0x7F) {
+            for (int k = tokenOffset; k < tokens.size(); ++k) {
+                bool ok = false;
+                uint8_t val = static_cast<uint8_t>(tokens.at(k).toUInt(&ok, 16));
+                if (ok) fullPayload.append(static_cast<char>(val));
+            }
+            break;
+        }
+    }
+
+    if (expectedLength > 0 && fullPayload.size() > expectedLength) {
+        fullPayload.truncate(expectedLength);
     }
 
     return fullPayload;

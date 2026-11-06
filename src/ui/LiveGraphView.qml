@@ -65,7 +65,7 @@ Rectangle {
                 color: root.lineColor
                 font.bold: true
                 font.pixelSize: 16
-                font.family: "Monospace"
+                font.family: "monospace"
             }
 
             Button {
@@ -124,7 +124,7 @@ Rectangle {
                     // Etiquetas de escala Y
                     var val = root.maxValue - ((root.maxValue - root.minValue) / hDivs) * j;
                     ctx.fillStyle = "#607286";
-                    ctx.font = "10px Monospace";
+                    ctx.font = "10px monospace";
                     ctx.fillText(val.toFixed(0), 6, y - 4);
                 }
 

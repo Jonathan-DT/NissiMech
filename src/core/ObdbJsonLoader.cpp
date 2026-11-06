@@ -9,35 +9,46 @@
 #include <QJsonValue>
 #include <QDebug>
 
-bool ObdbJsonLoader::loadFile(const QString& filePath)
+static QString resolveObdbPath(const QString& filePath)
 {
-    QString targetPath = filePath;
-    if (!QFileInfo::exists(targetPath)) {
-        const QStringList candidates = {
-            QDir::current().filePath(filePath),
-            QDir::current().filePath(QStringLiteral("../") + filePath),
-            QDir::current().filePath(QStringLiteral("../../") + filePath),
-            QCoreApplication::applicationDirPath() + QStringLiteral("/") + filePath,
-            QCoreApplication::applicationDirPath() + QStringLiteral("/../") + filePath,
-            QCoreApplication::applicationDirPath() + QStringLiteral("/../../") + filePath
-        };
-        for (const QString& cand : candidates) {
-            if (QFileInfo::exists(cand)) {
-                targetPath = cand;
-                break;
-            }
-        }
+    if (QFileInfo::exists(filePath)) {
+        return filePath;
     }
 
+    const QStringList candidates = {
+        QDir::current().filePath(filePath),
+        QDir::current().filePath(QStringLiteral("../") + filePath),
+        QDir::current().filePath(QStringLiteral("../../") + filePath),
+        QCoreApplication::applicationDirPath() + QStringLiteral("/") + filePath,
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../") + filePath,
+        QCoreApplication::applicationDirPath() + QStringLiteral("/../../") + filePath
+    };
+    for (const QString& cand : candidates) {
+        if (QFileInfo::exists(cand)) {
+            return cand;
+        }
+    }
+    return filePath;
+}
+
+bool ObdbJsonLoader::loadFile(const QString& filePath, std::optional<int> modelYear)
+{
+    clear();
+    return appendFile(filePath, modelYear);
+}
+
+bool ObdbJsonLoader::appendFile(const QString& filePath, std::optional<int> modelYear)
+{
+    QString targetPath = resolveObdbPath(filePath);
     QFile file(targetPath);
     if (!file.open(QIODevice::ReadOnly)) {
         qWarning() << "No se pudo abrir el archivo OBDb:" << filePath << "ni en rutas relativas probadas";
         return false;
     }
-    return loadJson(file.readAll());
+    return loadJson(file.readAll(), modelYear, false);
 }
 
-bool ObdbJsonLoader::loadJson(const QByteArray& jsonData)
+bool ObdbJsonLoader::loadJson(const QByteArray& jsonData, std::optional<int> modelYear, bool clearExisting)
 {
     QJsonParseError err;
     QJsonDocument doc = QJsonDocument::fromJson(jsonData, &err);
@@ -46,7 +57,10 @@ bool ObdbJsonLoader::loadJson(const QByteArray& jsonData)
         return false;
     }
 
-    clear();
+    if (clearExisting) {
+        clear();
+    }
+
     QJsonObject root = doc.object();
 
     // 1. ECUs
@@ -59,7 +73,16 @@ bool ObdbJsonLoader::loadJson(const QByteArray& jsonData)
             ecu.hdr = ecuObj.value(QStringLiteral("hdr")).toString().trimmed().toUpper();
             ecu.type = ecuObj.value(QStringLiteral("type")).toString().trimmed();
             if (!ecu.hdr.isEmpty()) {
-                m_ecus.append(ecu);
+                bool alreadyExists = false;
+                for (const auto& existing : m_ecus) {
+                    if (existing.hdr == ecu.hdr) {
+                        alreadyExists = true;
+                        break;
+                    }
+                }
+                if (!alreadyExists) {
+                    m_ecus.append(ecu);
+                }
             }
         }
     }
@@ -70,6 +93,23 @@ bool ObdbJsonLoader::loadJson(const QByteArray& jsonData)
         for (const auto& val : cmdArr) {
             if (!val.isObject()) continue;
             QJsonObject cmdObj = val.toObject();
+
+            // Filtrado por año modelo según "filter"
+            if (modelYear.has_value() && cmdObj.contains(QStringLiteral("filter")) && cmdObj.value(QStringLiteral("filter")).isObject()) {
+                QJsonObject filt = cmdObj.value(QStringLiteral("filter")).toObject();
+                if (filt.contains(QStringLiteral("from"))) {
+                    int fromYear = filt.value(QStringLiteral("from")).toInt();
+                    if (*modelYear < fromYear) {
+                        continue;
+                    }
+                }
+                if (filt.contains(QStringLiteral("to"))) {
+                    int toYear = filt.value(QStringLiteral("to")).toInt();
+                    if (*modelYear > toYear) {
+                        continue;
+                    }
+                }
+            }
 
             ObdbCommand cmd;
             cmd.hdr = cmdObj.value(QStringLiteral("hdr")).toString().trimmed().toUpper();
@@ -115,7 +155,8 @@ bool ObdbJsonLoader::loadJson(const QByteArray& jsonData)
                         QJsonObject fmtObj = sigObj.value(QStringLiteral("fmt")).toObject();
                         sig.fmt.bix = fmtObj.value(QStringLiteral("bix")).toInt(0);
                         sig.fmt.len = fmtObj.value(QStringLiteral("len")).toInt(8);
-                        sig.fmt.isSigned = fmtObj.value(QStringLiteral("signed")).toBool(false);
+                        // Soporta tanto "sign": true como "signed": true
+                        sig.fmt.isSigned = fmtObj.value(QStringLiteral("sign")).toBool(fmtObj.value(QStringLiteral("signed")).toBool(false));
                         sig.fmt.mul = fmtObj.value(QStringLiteral("mul")).toDouble(1.0);
                         sig.fmt.div = fmtObj.value(QStringLiteral("div")).toDouble(1.0);
                         sig.fmt.add = fmtObj.value(QStringLiteral("add")).toDouble(0.0);

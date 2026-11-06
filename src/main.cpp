@@ -285,16 +285,31 @@ private:
         QString vFolder = m_availableVehicles.at(index);
         m_activeVehicleName = vFolder;
 
-        // Rutas candidatas
-        QString jsonPath = QStringLiteral("opendbc/%1/signalsets/v3/default.json").arg(vFolder);
-        if (!QFileInfo::exists(jsonPath)) {
-            jsonPath = QStringLiteral("../opendbc/%1/signalsets/v3/default.json").arg(vFolder);
+        // Determinar año modelo para filtrado en OBDb
+        std::optional<int> modelYear;
+        if (vFolder.contains(QStringLiteral("Camry"), Qt::CaseInsensitive)) {
+            modelYear = 2006;
+        } else if (vFolder.contains(QStringLiteral("Beat"), Qt::CaseInsensitive) || vFolder.contains(QStringLiteral("Spark"), Qt::CaseInsensitive)) {
+            modelYear = 2018;
         }
 
-        // Cargar OBDb JSON
+        // 1. Cargar SIEMPRE la base estándar SAE-J1979 primero
         m_obdbLoader->clear();
-        if (QFileInfo::exists(jsonPath)) {
-            m_obdbLoader->loadFile(jsonPath);
+        QString saeJsonPath = QStringLiteral("opendbc/SAE-J1979/signalsets/v3/default.json");
+        if (!QFileInfo::exists(saeJsonPath)) {
+            saeJsonPath = QStringLiteral("../opendbc/SAE-J1979/signalsets/v3/default.json");
+        }
+        m_obdbLoader->appendFile(saeJsonPath);
+
+        // 2. Si no es el perfil genérico, fusionar las señales específicas del vehículo
+        if (vFolder != QStringLiteral("SAE-J1979")) {
+            QString jsonPath = QStringLiteral("opendbc/%1/signalsets/v3/default.json").arg(vFolder);
+            if (!QFileInfo::exists(jsonPath)) {
+                jsonPath = QStringLiteral("../opendbc/%1/signalsets/v3/default.json").arg(vFolder);
+            }
+            if (QFileInfo::exists(jsonPath)) {
+                m_obdbLoader->appendFile(jsonPath, modelYear);
+            }
         }
 
         // Cargar DBC de opendbc si está presente en la carpeta del vehículo
@@ -358,21 +373,41 @@ private:
         m_mafSignalId.clear();
         m_throttleSignalId.clear();
 
+        // 1. Priorizar SIEMPRE señales base legisladas SAE J1979 si existen en m_obdbLoader
+        if (m_obdbLoader->findSignal(QStringLiteral("SAE_ENGINE_RPM")))
+            m_rpmSignalId = QStringLiteral("SAE_ENGINE_RPM");
+        if (m_obdbLoader->findSignal(QStringLiteral("SAE_VEHICLE_SPEED")))
+            m_speedSignalId = QStringLiteral("SAE_VEHICLE_SPEED");
+        if (m_obdbLoader->findSignal(QStringLiteral("SAE_COOLANT_TEMP")))
+            m_coolantSignalId = QStringLiteral("SAE_COOLANT_TEMP");
+        if (m_obdbLoader->findSignal(QStringLiteral("SAE_INTAKE_AIR_TEMP")))
+            m_intakeSignalId = QStringLiteral("SAE_INTAKE_AIR_TEMP");
+        if (m_obdbLoader->findSignal(QStringLiteral("SAE_MAF_AIR_FLOW")))
+            m_mafSignalId = QStringLiteral("SAE_MAF_AIR_FLOW");
+        if (m_obdbLoader->findSignal(QStringLiteral("SAE_THROTTLE_POSITION")))
+            m_throttleSignalId = QStringLiteral("SAE_THROTTLE_POSITION");
+
+        // 2. Si alguna no está asignada, buscar únicamente por suggestedMetric exacto
         for (const QString& id : m_availableSignals) {
             const ObdbSignal* s = m_obdbLoader->findSignal(id);
             if (!s) continue;
 
-            if (m_rpmSignalId.isEmpty() && (s->suggestedMetric == QStringLiteral("engineSpeed") || id.contains(QStringLiteral("RPM")) || id.contains(QStringLiteral("ENGINE_SPEED")))) {
+            if (m_rpmSignalId.isEmpty() && s->suggestedMetric == QStringLiteral("engineSpeed")) {
                 m_rpmSignalId = id;
-            } else if (m_speedSignalId.isEmpty() && (s->suggestedMetric == QStringLiteral("speed") || id.contains(QStringLiteral("SPEED")) || id.contains(QStringLiteral("VSS")))) {
+            }
+            if (m_speedSignalId.isEmpty() && s->suggestedMetric == QStringLiteral("speed")) {
                 m_speedSignalId = id;
-            } else if (m_coolantSignalId.isEmpty() && (s->suggestedMetric == QStringLiteral("coolantTemperature") || id.contains(QStringLiteral("COOLANT")))) {
+            }
+            if (m_coolantSignalId.isEmpty() && s->suggestedMetric == QStringLiteral("coolantTemperature")) {
                 m_coolantSignalId = id;
-            } else if (m_intakeSignalId.isEmpty() && (s->suggestedMetric == QStringLiteral("intakeAirTemperature") || id.contains(QStringLiteral("INTAKE")))) {
+            }
+            if (m_intakeSignalId.isEmpty() && s->suggestedMetric == QStringLiteral("intakeAirTemperature")) {
                 m_intakeSignalId = id;
-            } else if (m_mafSignalId.isEmpty() && (s->suggestedMetric == QStringLiteral("massAirFlow") || id.contains(QStringLiteral("MAF")))) {
+            }
+            if (m_mafSignalId.isEmpty() && s->suggestedMetric == QStringLiteral("massAirFlow")) {
                 m_mafSignalId = id;
-            } else if (m_throttleSignalId.isEmpty() && (s->suggestedMetric == QStringLiteral("throttlePosition") || id.contains(QStringLiteral("LOAD")) || id.contains(QStringLiteral("THROTTLE")))) {
+            }
+            if (m_throttleSignalId.isEmpty() && s->suggestedMetric == QStringLiteral("throttlePosition")) {
                 m_throttleSignalId = id;
             }
         }
@@ -442,6 +477,28 @@ private:
 
 int main(int argc, char* argv[])
 {
+#if defined(Q_OS_LINUX)
+    // En entornos Linux/WSL2 sin permisos de lectura/escritura en los nodos /dev/dri (ej. usuario no en grupo render/video),
+    // configurar software rasterizer antes de inicializar la pila gráfica para evitar advertencias de libEGL y caídas de driver Zink/DRI2.
+    if (!qEnvironmentVariableIsSet("LIBGL_ALWAYS_SOFTWARE")) {
+        bool hasDriAccess = false;
+        const QStringList driCandidates = {
+            QStringLiteral("/dev/dri/renderD128"),
+            QStringLiteral("/dev/dri/card0")
+        };
+        for (const QString& node : driCandidates) {
+            QFileInfo fi(node);
+            if (fi.exists() && fi.isReadable() && fi.isWritable()) {
+                hasDriAccess = true;
+                break;
+            }
+        }
+        if (!hasDriAccess) {
+            qputenv("LIBGL_ALWAYS_SOFTWARE", "1");
+        }
+    }
+#endif
+
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("OBD2_Scanner_Pro"));
     app.setOrganizationName(QStringLiteral("NissiMech"));

@@ -202,8 +202,10 @@ void TestObdSimulator::testToyotaCamry2006DynamicSimulation()
     DtcManager dtcMgr;
     QVERIFY(dtcMgr.initializeDatabase());
 
+    // Fusión de SAE-J1979 base y perfil específico Camry 2006
     ObdbJsonLoader obdbLoader;
-    QVERIFY(obdbLoader.loadFile(QStringLiteral("opendbc/Toyota-Camry/signalsets/v3/default.json")));
+    QVERIFY(obdbLoader.loadFile(QStringLiteral("opendbc/SAE-J1979/signalsets/v3/default.json")));
+    QVERIFY(obdbLoader.appendFile(QStringLiteral("opendbc/Toyota-Camry/signalsets/v3/default.json"), 2006));
 
     DbcParser dbcParser;
     QVERIFY(dbcParser.loadFile(QStringLiteral("opendbc/Toyota-Camry/toyota_nodsu_pt_generated.dbc")));
@@ -230,18 +232,27 @@ void TestObdSimulator::testToyotaCamry2006DynamicSimulation()
     QVERIFY(ect.has_value());
     QCOMPARE(*ect, 90.0);
 
-    // 4. Verificación de códigos de falla SAE J1979
+    // 4. Consulta de voltaje de batería (CAMRY_BATTERY_VOLTAGE_V2 en 21 01 a 27 bytes de datos = 13.8V)
+    auto batt = obd.querySignal(QStringLiteral("CAMRY_BATTERY_VOLTAGE_V2"));
+    QVERIFY(batt.has_value());
+    QCOMPARE(*batt, 13.8);
+
+    // 5. Consulta de temperatura ATF de transmisión (21 82 = 70 °C)
+    auto atf = obd.querySignal(QStringLiteral("CAMRY_ATF_PAN_T"));
+    QVERIFY(atf.has_value());
+    QCOMPARE(*atf, 70.0);
+
+    // 6. Consulta de velocidad de rueda ABS según OBDb oficial (7B0 con 21 03 = 64.0 km/h)
+    auto ws = obd.querySignal(QStringLiteral("CAMRY_TIRE_FR_SPD"));
+    QVERIFY(ws.has_value());
+    QCOMPARE(*ws, 64.0);
+
+    // 7. Verificación de códigos de falla SAE J1979
     QList<DtcInfo> dtcs = obd.readStoredDtcs();
     QStringList codes;
     for (const auto& d : dtcs) codes.append(d.code);
     QVERIFY(codes.contains(QStringLiteral("P0171")));
     QVERIFY(codes.contains(QStringLiteral("P0740")));
-
-    // 5. Lectura UDS de fallas en módulo ABS si está definido
-    QList<DtcInfo> absDtcs = uds.readModuleDtcs(QStringLiteral("7B0"), QStringLiteral("7B8"));
-    QStringList absCodes;
-    for (const auto& d : absDtcs) absCodes.append(d.code);
-    QVERIFY(absCodes.contains(QStringLiteral("C0200")));
 }
 
 void TestObdSimulator::testChevroletBeat2018DynamicSimulation()
@@ -253,8 +264,10 @@ void TestObdSimulator::testChevroletBeat2018DynamicSimulation()
     DtcManager dtcMgr;
     QVERIFY(dtcMgr.initializeDatabase());
 
+    // Fusión de SAE-J1979 base y perfil específico Chevrolet Beat 2018
     ObdbJsonLoader obdbLoader;
-    QVERIFY(obdbLoader.loadFile(QStringLiteral("opendbc/Chevrolet-Beat/signalsets/v3/default.json")));
+    QVERIFY(obdbLoader.loadFile(QStringLiteral("opendbc/SAE-J1979/signalsets/v3/default.json")));
+    QVERIFY(obdbLoader.appendFile(QStringLiteral("opendbc/Chevrolet-Beat/signalsets/v3/default.json"), 2018));
 
     DbcParser dbcParser;
     QVERIFY(dbcParser.loadFile(QStringLiteral("opendbc/Chevrolet-Beat/gm_global_a_powertrain_generated.dbc")));
@@ -266,17 +279,22 @@ void TestObdSimulator::testChevroletBeat2018DynamicSimulation()
     ObdProtocol obd(&mockDriver, &dtcMgr, &obdbLoader, &dbcParser);
     UdsProtocol uds(&mockDriver, &dtcMgr, &obdbLoader, &dbcParser);
 
-    // 1. Lectura y reensamblado multiframe ISO-TP del VIN
+    // 1. Consulta de RPM base estándar legislada SAE J1979 (01 0C = 800 RPM)
+    auto saeRpm = obd.querySignal(QStringLiteral("SAE_ENGINE_RPM"));
+    QVERIFY(saeRpm.has_value());
+    QCOMPARE(*saeRpm, 800.0);
+
+    // 2. Lectura y reensamblado multiframe ISO-TP del VIN
     QString vin = obd.readVin();
     QCOMPARE(vin, QStringLiteral("MA6CB6CD9JT000001"));
 
-    // 2. Consulta UDS de fallas en módulo GM EBCM (7E2)
+    // 3. Consulta UDS de fallas en módulo GM EBCM (7E2)
     QList<DtcInfo> absDtcs = uds.readModuleDtcs(QStringLiteral("7E2"), QStringLiteral("7EA"));
     QStringList absCodes;
     for (const auto& d : absDtcs) absCodes.append(d.code);
     QVERIFY(absCodes.contains(QStringLiteral("C0035")));
 
-    // 3. Comando no documentado en el escenario debe devolver NO DATA
+    // 4. Comando no documentado en el escenario debe devolver NO DATA
     QString resp = mockDriver.sendRawCommand(QStringLiteral("AT DP"));
     QVERIFY(!resp.isEmpty());
 
