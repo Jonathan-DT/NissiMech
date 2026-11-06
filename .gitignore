@@ -1,0 +1,97 @@
+# ==============================================================================
+# .gitignore para OBD2_Scanner_Pro (C++20, CMake, Qt6 QML)
+# ==============================================================================
+
+# Directorios de compilación y artefactos de CMake
+build/
+build-*/
+cmake-build-*/
+out/
+bin/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+!tests/CMakeLists.txt
+
+# Archivos objeto, binarios y bibliotecas de enlace
+*.o
+*.obj
+*.so
+*.so.*
+*.dylib
+*.dll
+*.a
+*.lib
+*.exe
+*.out
+*.app
+OBD2_Scanner_Pro
+tst_obd_simulator
+
+# Generados automáticamente por Qt (MOC, UIC, RCC, QML Cache)
+*.moc
+moc_*.cpp
+mocs_compilation.cpp
+ui_*.h
+qrc_*.cpp
+*.qmlc
+*.jsc
+.qt/
+.rcc/
+
+# Archivos temporales de SQLite3 (WAL, SHM, Journal)
+# Se preserva la base de datos oficial y su esquema
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Excepciones: Conservar base de datos y esquema del proyecto
+!database/schema.sql
+!database/dtc_codes_es.sqlite
+
+# Entornos de desarrollo y editores (IDEs)
+# Qt Creator
+*.user
+*.user.*
+.qtcreator/
+CMakeLists.txt.user*
+
+# Visual Studio Code / Cursor
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.history/
+
+# CLion / JetBrains
+.idea/
+
+# Visual Studio (MSVC)
+.vs/
+*.suo
+*.user
+*.userosv
+*.sln.docstates
+
+# Archivos del sistema operativo y copias de seguridad
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+*.bak
+*.orig
+*.log
+
+# Volcados de memoria (Core Dumps en raíz)
+/core
+/core.*
+core.[0-9]*
+vgcore.*

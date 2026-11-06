@@ -1,0 +1,110 @@
+# OBD2_Scanner_Pro (NissiMech)
+
+Sistema profesional multiplataforma de diagnóstico vehicular y telemetría en tiempo real basado en **C++20**, **Qt6 (LGPLv3)** y **CMake**.
+
+Diseñado para talleres mecánicos, laboratorios de ingeniería automotriz y dispositivos embebidos basados en Linux ARM64 (ej. Raspberry Pi / Toradex) y estaciones Windows/Linux x86_64.
+
+---
+
+## 1. Características Principales
+
+- **Estándares Automotrices Oficiales Soportados:**
+  - **SAE J1979 / ISO 15031-5:** Modos de diagnóstico OBD2 `$01`, `$02`, `$03`, `$04`, `$07`, `$09`, `$0A`.
+  - **SAE J2012 / ISO 15031-6:** Decodificación bit a bit de Códigos de Diagnóstico de Falla (DTC) tipo `P0xxx`, `C0xxx`, `B0xxx`, `U0xxx`.
+  - **ISO 15765-4 / ISO 15765-2:** Comunicación CAN 11-bit / 29-bit a 500 kbps y 250 kbps; reensamblado de tramas multiframe ISO-TP (ej. lectura de VIN).
+  - **ISO 14229-1 (UDS):** Servicios extendidos `$19` (ReadDTCInformation con status mask), `$22` (ReadDataByIdentifier) y direccionamiento físico específico por ECU (ECM, TCM, ABS).
+
+- **Cumplimiento Estricto de Licenciamiento Comercial (LGPLv3):**
+  - Enlace dinámico (`SHARED`) únicamente con módulos LGPLv3: `Qt6Core`, `Qt6Gui`, `Qt6Qml`, `Qt6Quick`, `Qt6SerialPort`, `Qt6SerialBus`, `Qt6Sql` y `Qt6Test`.
+  - **Sin dependencia de `QtCharts` ni `QtGraphs`:** El componente `LiveGraphView.qml` utiliza renderizado de alto rendimiento en tiempo real implementado directamente sobre el elemento nativo `Canvas` (HTML5 Canvas 2D API de QtQuick).
+  - Base de datos SQLite3 de dominio público mediante `QtSql` (`QSQLITE`).
+
+- **Cortafuegos de Seguridad de ECU (`SafetyGuard`):**
+  - Lista blanca estricta para comandos de lectura AT/ST y modos OBD2/UDS de solo lectura.
+  - Bloqueo permanente para operaciones riesgosas (`AT BI`, `AT CSM0`, `AT PP`, `27` SecurityAccess, `2E` WriteDataByIdentifier, `2F` Actuator Control, `31` RoutineControl, `34`/`36` Flasheo de memoria).
+  - Enclavamiento de seguridad para el borrado de códigos (Modo `04` / UDS `14`): requiere confirmación de usuario explícita y motor apagado (RPM == 0).
+
+---
+
+## 2. Jerarquía de Directorios del Proyecto
+
+```
+OBD2_Scanner_Pro/
+├── CMakeLists.txt              # Configuración CMake 3.21+ C++20 y módulos LGPLv3
+├── README                      # Documentación técnica del sistema
+├── database/
+│   ├── schema.sql              # Esquema DDL y catálogo de códigos DTC
+│   └── dtc_codes_es.sqlite     # Base de datos SQLite con descripciones clínicas en español
+├── src/
+│   ├── main.cpp                # Punto de entrada, DiagnosticController y enlace QML
+│   ├── hal/                    # Capa de Abstracción de Hardware (HAL)
+│   │   ├── IObdInterface.h     # Contrato virtual puro de comunicación
+│   │   ├── SerialElmDriver.h   # Driver para adaptadores serie ELM327 / STN / vLinker
+│   │   ├── SerialElmDriver.cpp
+│   │   ├── SocketCanDriver.h   # Driver nativo Linux SocketCAN (ej. can0)
+│   │   ├── SocketCanDriver.cpp
+│   │   ├── MockElmDriver.h     # Simulador en memoria con perfiles vehiculares reales
+│   │   └── MockElmDriver.cpp
+│   ├── core/                   # Lógica de Diagnóstico y Seguridad
+│   │   ├── SafetyGuard.h       # Cortafuegos vehicular contra escrituras accidentales
+│   │   ├── SafetyGuard.cpp
+│   │   ├── ObdProtocol.h       # Modos OBD2 estándar y reensamblado ISO-TP
+│   │   ├── ObdProtocol.cpp
+│   │   ├── UdsProtocol.h       # Protocolo UDS y direccionamiento por ECU
+│   │   ├── UdsProtocol.cpp
+│   │   ├── PidDecoder.h        # Fórmulas matemáticas de PIDs según SAE J1979
+│   │   ├── PidDecoder.cpp
+│   │   ├── DtcManager.h        # Decodificación binaria SAE J2012 y motor SQLite
+│   │   └── DtcManager.cpp
+│   └── ui/                     # Interfaz Gráfica de Usuario (QtQuick QML)
+│       ├── MainDashboard.qml   # Cuadro de instrumentos, velocímetro y tabla DTC
+│       └── LiveGraphView.qml   # Osciloscopio en tiempo real renderizado sobre Canvas
+└── tests/
+    ├── CMakeLists.txt          # Configuración del ejecutable de pruebas
+    └── tst_obd_simulator.cpp   # Suite automatizada QtTest con 100% de cobertura
+```
+
+---
+
+## 3. Adaptadores y Perfiles de Simulación
+
+### Hardware Compatible
+1. **Vgate vLinker FS USB:** Alta velocidad para CAN 500 kbps y comandos STN.
+2. **OBDLink EX USB:** Chip STN1170 con soporte completo para comandos `AT` / `ST`.
+3. **Dispositivos SocketCAN:** Interfaces nativas CAN en Linux como `can0`, interfaces USB-to-CAN (CANable, PEAK PCAN-USB, etc.).
+
+### Perfiles de Simulación Integrados (`MockElmDriver`)
+- **`ToyotaCamry2006`:**
+  - Dirección física a Motor (`7E0`), Transmisión (`7E1`) y Frenos ABS (`7B0`).
+  - Simula respuesta multi-módulo ECM + TCM en `01 00`.
+  - Temperatura de fluido de transmisión TCM con comando Toyota `21 82` (70 °C).
+  - Códigos de falla almacenados: `P0171` (Mezcla pobre Banco 1) y `P0740` (Falla en circuito de embrague TCC).
+  - Código ABS Toyota en header `7B0` con servicio UDS `19 02 FF`: `C0200` (Sensor rueda delantera derecha).
+- **`ChevroletBeat2018`:**
+  - Protocolo ISO 15765-4 CAN (11-bit / 500k).
+  - Simulación de trama multiframe ISO-TP para lectura del VIN (`MA6CB6CD9JT000001`) en `09 02`.
+  - Módulo ABS GM EBCM (`7E2`): código de falla `C0035` (Sensor rueda delantera izquierda) y DID `22 00 0D`.
+
+---
+
+## 4. Compilación y Ejecución
+
+### Requisitos Previos
+- Compilador con soporte C++20 (GCC >= 11, Clang >= 13 o MSVC >= 2019 v16.10).
+- CMake >= 3.21.
+- Qt6 (>= 6.2) con módulos: `Core`, `Gui`, `Qml`, `Quick`, `SerialPort`, `SerialBus`, `Sql`, `Test`.
+
+### Instrucciones de Compilación
+```bash
+# 1. Configuración de CMake
+cmake -B build -S .
+
+# 2. Compilar binarios
+cmake --build build -j$(nproc)
+
+# 3. Ejecutar las pruebas automatizadas (CTest)
+ctest --test-dir build --output-on-failure
+
+# 4. Lanzar la aplicación
+./build/OBD2_Scanner_Pro
+```
